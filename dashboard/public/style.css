@@ -1,0 +1,919 @@
+/* ================================================================
+   style.css — Chat Mood Meter Dashboard 樣式表
+   深色主題，類 Grafana 風格，卡片式 UI
+   ================================================================ */
+
+/* ── 自訂 CSS 變數 ──────────────────────────────────────────── */
+:root {
+  /* 背景層次 */
+  --bg-base:     #0f1117;   /* 最底層背景 */
+  --bg-surface:  #1a1a2e;   /* 卡片背景 */
+  --bg-elevated: #1e2235;   /* 懸浮/tooltip 背景 */
+  --bg-hover:    #252840;   /* 滑鼠懸浮背景 */
+
+  /* 邊框 */
+  --border:      #2d3144;
+  --border-light:#3d4460;
+
+  /* 文字 */
+  --text-primary:  #e0e0e0;
+  --text-secondary:#94a3b8;
+  --text-muted:    #475569;
+  --text-dim:      #334155;
+
+  /* 品牌色 */
+  --accent:      #818cf8;  /* 靛紫 */
+  --accent-dim:  rgba(129, 140, 248, 0.15);
+
+  /* 情緒色 */
+  --c-hype:    #f59e0b;
+  --c-funny:   #10b981;
+  --c-sad:     #60a5fa;
+  --c-angry:   #f87171;
+  --c-neutral: #94a3b8;
+
+  /* 圓角 */
+  --radius-sm: 8px;
+  --radius:    12px;
+  --radius-lg: 16px;
+
+  /* 陰影（微光） */
+  --shadow:    0 2px 12px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 4px 24px rgba(0, 0, 0, 0.6);
+
+  /* 間距 */
+  --gap: 16px;
+
+  /* 字體 */
+  --font-mono:    'VT323', monospace;
+  --font-body:    'Inter', system-ui, -apple-system, sans-serif;
+  --font-numeric: 'Inter', monospace;
+}
+
+/* ── 基礎重設 ──────────────────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  font-size: 15px;
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: var(--bg-base);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  line-height: 1.6;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+/* ── 導覽列 ─────────────────────────────────────────────────── */
+.navbar {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: rgba(15, 17, 23, 0.92);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border);
+}
+
+.navbar-inner {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 0 20px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+/* Logo 區 */
+.navbar-brand {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  text-decoration: none;
+  flex-shrink: 0;
+}
+
+.brand-icon {
+  font-size: 20px;
+  line-height: 1;
+  position: relative;
+  top: 2px;
+}
+
+.brand-title {
+  font-family: var(--font-mono);
+  font-size: 22px;
+  color: var(--accent);
+  letter-spacing: 0.02em;
+  line-height: 1;
+}
+
+.brand-sub {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+/* 導覽連結 */
+.navbar-nav {
+  display: flex;
+  gap: 4px;
+  flex: 1;
+}
+
+.nav-link {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  text-decoration: none;
+  transition: background 0.15s, color 0.15s;
+}
+
+.nav-link:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  text-decoration: none;
+}
+
+.nav-link.active {
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+
+.nav-icon {
+  font-size: 14px;
+}
+
+/* 狀態指示 */
+.navbar-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.status-dot.ok {
+  background: var(--c-funny);
+  box-shadow: 0 0 6px var(--c-funny);
+}
+
+.status-dot.error {
+  background: var(--c-angry);
+}
+
+.status-text {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* ── 主要內容區 ─────────────────────────────────────────────── */
+.main-content {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 24px 20px 64px;
+}
+
+/* ── 頁面動畫 ───────────────────────────────────────────────── */
+.page {
+  animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Loading 畫面 ────────────────────────────────────────────── */
+.loading-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+  gap: 16px;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.spinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* 行內 loading 小 spinner */
+.spinner-sm {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  vertical-align: middle;
+}
+
+/* ── 卡片 ───────────────────────────────────────────────────── */
+.card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+  box-shadow: var(--shadow);
+  transition: border-color 0.15s;
+}
+
+.card:hover {
+  border-color: var(--border-light);
+}
+
+.card-header {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.card-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.card-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-left: auto;
+}
+
+/* ── 全域統計橫幅 ────────────────────────────────────────────── */
+.stats-banner {
+  display: flex;
+  gap: var(--gap);
+  margin-bottom: var(--gap);
+  flex-wrap: wrap;
+}
+
+.stat-pill {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 140px;
+}
+
+.pill-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-muted);
+}
+
+.pill-value {
+  font-size: 28px;
+  font-family: var(--font-mono);
+  color: var(--accent);
+  letter-spacing: 0.03em;
+  line-height: 1.1;
+}
+
+/* ── Session 列表佈局 ─────────────────────────────────────────── */
+.sessions-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+  gap: var(--gap);
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .sessions-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* 區段標題列 */
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.section-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+/* ── Session 卡片 ────────────────────────────────────────────── */
+.session-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-bottom: 10px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, transform 0.1s;
+  display: block;
+  text-decoration: none;
+  color: inherit;
+}
+
+.session-card:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-light);
+  transform: translateX(2px);
+  text-decoration: none;
+}
+
+.session-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.session-date {
+  font-family: var(--font-mono);
+  font-size: 17px;
+  color: var(--text-primary);
+  letter-spacing: 0.03em;
+}
+
+.session-status {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.session-status.live {
+  background: rgba(16, 185, 129, 0.15);
+  color: var(--c-funny);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.session-status.ended {
+  background: rgba(100, 116, 139, 0.1);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+}
+
+.session-meta {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.meta-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.meta-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+.meta-value {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* 情緒標籤 */
+.emotion-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid currentColor;
+}
+
+/* ── 情緒條形（mini visualization） */
+.emotion-bar-row {
+  display: flex;
+  gap: 3px;
+  margin-top: 10px;
+  height: 4px;
+  border-radius: 99px;
+  overflow: hidden;
+}
+
+.emotion-bar-seg {
+  transition: flex 0.3s ease;
+  min-width: 2px;
+}
+
+/* ── 摘要卡片格 ─────────────────────────────────────────────── */
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+  margin-bottom: var(--gap);
+}
+
+.summary-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.summary-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+.summary-value {
+  font-size: 24px;
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+  line-height: 1.1;
+  letter-spacing: 0.02em;
+}
+
+.summary-sub {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* ── 圖表容器 ────────────────────────────────────────────────── */
+.chart-wrap {
+  position: relative;
+}
+
+/* ── 圖例 ───────────────────────────────────────────────────── */
+.legend {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-left: auto;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--text-muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+.legend-item:hover {
+  color: var(--text-primary);
+}
+
+.legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* ── 高光列表 ────────────────────────────────────────────────── */
+.highlight-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px 16px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  transition: background 0.15s;
+  /* border-left 顏色由 JS 動態設定 */
+  border-left-width: 3px;
+}
+
+.highlight-card:hover {
+  background: var(--bg-hover);
+}
+
+.highlight-card.active {
+  background: var(--bg-hover);
+  box-shadow: inset 0 0 0 1px var(--border-light);
+}
+
+.highlight-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.highlight-index {
+  font-size: 11px;
+  color: var(--text-muted);
+  min-width: 20px;
+  font-family: var(--font-mono);
+}
+
+.highlight-time {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  font-family: var(--font-mono);
+}
+
+.highlight-emotion {
+  font-size: 12px;
+  font-weight: 700;
+  padding: 1px 8px;
+  border-radius: 5px;
+  background: rgba(255,255,255,0.06);
+}
+
+.highlight-intensity {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.highlight-duration {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-left: auto;
+}
+
+.highlight-messages {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 8px;
+}
+
+.sample-msg {
+  display: inline-block;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 2px 10px;
+  font-size: 12px;
+  color: #cbd5e1;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── 導出按鈕列 ─────────────────────────────────────────────── */
+.export-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 20px;
+  padding: 16px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.export-label {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.btn-export {
+  padding: 6px 14px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  font-family: var(--font-body);
+}
+
+.btn-export:hover {
+  background: var(--bg-hover);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* ── 刷新按鈕 ────────────────────────────────────────────────── */
+.btn-refresh {
+  width: 30px;
+  height: 30px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s;
+}
+
+.btn-refresh:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.btn-refresh.loading {
+  animation: spin 0.8s linear infinite;
+}
+
+/* ── 返回按鈕 ────────────────────────────────────────────────── */
+.btn-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: 13px;
+  text-decoration: none;
+  transition: background 0.15s, color 0.15s;
+}
+
+.btn-back:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  text-decoration: none;
+}
+
+/* ── 詳情頁頂部 ─────────────────────────────────────────────── */
+.detail-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.detail-session-id {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+/* ── 熱力圖 ─────────────────────────────────────────────────── */
+.heatmap-container {
+  overflow-x: auto;
+  padding: 4px 0 8px;
+}
+
+.heatmap-grid {
+  display: flex;
+  gap: 3px;
+  align-items: flex-end;
+  min-width: max-content;
+}
+
+.heatmap-week {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.heatmap-day {
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  background: var(--bg-hover);
+  cursor: pointer;
+  transition: transform 0.1s;
+  position: relative;
+}
+
+.heatmap-day:hover {
+  transform: scale(1.3);
+  z-index: 1;
+}
+
+/* 熱力等級：0-4 */
+.heatmap-day[data-level="0"] { background: var(--bg-hover); }
+.heatmap-day[data-level="1"] { background: rgba(129, 140, 248, 0.25); }
+.heatmap-day[data-level="2"] { background: rgba(129, 140, 248, 0.45); }
+.heatmap-day[data-level="3"] { background: rgba(129, 140, 248, 0.7); }
+.heatmap-day[data-level="4"] { background: var(--accent); }
+
+.heatmap-month-labels {
+  display: flex;
+  gap: 3px;
+  padding-left: 0;
+  margin-bottom: 4px;
+  min-width: max-content;
+}
+
+.heatmap-month-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  width: 12px;
+}
+
+/* Tooltip */
+.heatmap-tooltip {
+  position: fixed;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  font-size: 12px;
+  color: var(--text-primary);
+  pointer-events: none;
+  z-index: 200;
+  white-space: nowrap;
+  box-shadow: var(--shadow-lg);
+}
+
+/* ── 空狀態 ─────────────────────────────────────────────────── */
+.empty-state {
+  text-align: center;
+  padding: 48px 24px;
+  color: var(--text-muted);
+}
+
+.empty-state .empty-icon {
+  font-size: 48px;
+  display: block;
+  margin-bottom: 12px;
+  opacity: 0.5;
+}
+
+.empty-state .empty-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+
+.empty-state .empty-desc {
+  font-size: 13px;
+}
+
+/* ── 錯誤狀態 ────────────────────────────────────────────────── */
+.error-state {
+  text-align: center;
+  padding: 32px 24px;
+  color: var(--c-angry);
+  background: rgba(248, 113, 113, 0.08);
+  border: 1px solid rgba(248, 113, 113, 0.2);
+  border-radius: var(--radius);
+}
+
+/* ── 響應式：手機 ─────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .navbar-inner {
+    padding: 0 14px;
+    gap: 12px;
+  }
+
+  .brand-sub { display: none; }
+
+  .nav-link span:last-child {
+    display: none;
+  }
+
+  .main-content {
+    padding: 16px 14px 48px;
+  }
+
+  .stats-banner {
+    gap: 8px;
+  }
+
+  .stat-pill {
+    min-width: calc(50% - 4px);
+    flex: 0 0 calc(50% - 4px);
+  }
+
+  .pill-value {
+    font-size: 22px;
+  }
+
+  .summary-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .export-bar {
+    flex-wrap: wrap;
+  }
+}
+
+/* ── 全域 scrollbar 樣式（Chromium 專用） ─────────────────────── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-base);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-light);
+  border-radius: 99px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+/* ── 工具提示 ────────────────────────────────────────────────── */
+[data-tooltip] {
+  position: relative;
+  cursor: default;
+}
+
+[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  padding: 4px 8px;
+  font-size: 11px;
+  color: var(--text-primary);
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 50;
+}
+
+[data-tooltip]:hover::after {
+  opacity: 1;
+}
+
+/* ── session-detail 的 card margin ─────────────────────────── */
+#page-session-detail .card + .card {
+  margin-top: var(--gap);
+}

@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chat Mood Meter Dashboard</title>
+
+  <!-- 字體：VT323（像素感標題）+ Inter（正文） -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=VT323&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+  <!-- 樣式表 -->
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- ── 頂部導覽列 ─────────────────────────────────────────── -->
+  <header class="navbar">
+    <div class="navbar-inner">
+      <!-- Logo + 標題 -->
+      <a href="#/" class="navbar-brand">
+        <span class="brand-icon">🎭</span>
+        <span class="brand-title">Chat Mood Meter</span>
+        <span class="brand-sub">Dashboard</span>
+      </a>
+
+      <!-- 導覽按鈕 -->
+      <nav class="navbar-nav">
+        <a href="#/" class="nav-link active" id="nav-home">
+          <span class="nav-icon">📊</span>
+          <span>Sessions</span>
+        </a>
+        <a href="#/stats" class="nav-link" id="nav-stats">
+          <span class="nav-icon">🌐</span>
+          <span>Global Stats</span>
+        </a>
+      </nav>
+
+      <!-- 右側狀態指示 -->
+      <div class="navbar-right">
+        <span class="status-dot" id="status-dot"></span>
+        <span class="status-text" id="status-text">Loading…</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- ── 主要內容區 ──────────────────────────────────────────── -->
+  <main class="main-content" id="app">
+    <!-- JavaScript 動態渲染 -->
+    <div class="loading-screen" id="initial-loader">
+      <div class="spinner"></div>
+      <p>Connecting to dashboard…</p>
+    </div>
+  </main>
+
+  <!-- ── 頁面模板（隱藏，由 JS 複製使用）───────────────────────── -->
+
+  <!-- 模板：Session 列表頁 -->
+  <template id="tpl-sessions">
+    <div class="page" id="page-sessions">
+      <!-- 全域統計橫幅 -->
+      <div class="stats-banner" id="stats-banner">
+        <div class="stat-pill" id="stat-total-sessions">
+          <span class="pill-label">Total Sessions</span>
+          <span class="pill-value" id="val-total-sessions">—</span>
+        </div>
+        <div class="stat-pill" id="stat-total-duration">
+          <span class="pill-label">Total Duration</span>
+          <span class="pill-value" id="val-total-duration">—</span>
+        </div>
+        <div class="stat-pill" id="stat-total-messages">
+          <span class="pill-label">Total Messages</span>
+          <span class="pill-value" id="val-total-messages">—</span>
+        </div>
+      </div>
+
+      <!-- 兩欄佈局：左側場次列表 + 右側趨勢圖 -->
+      <div class="sessions-layout">
+        <!-- 左欄：場次卡片列表 -->
+        <section class="sessions-list-col">
+          <div class="section-header">
+            <h2 class="section-title">Recent Sessions</h2>
+            <button class="btn-refresh" id="btn-refresh" title="Refresh">↻</button>
+          </div>
+          <div id="sessions-container">
+            <!-- 動態生成 -->
+          </div>
+        </section>
+
+        <!-- 右欄：跨場次趨勢圖 -->
+        <section class="trend-col">
+          <div class="card">
+            <div class="card-header">
+              <h3 class="card-title">Emotion Trends Across Sessions</h3>
+              <span class="card-hint">Stacked bar — average emotion distribution per session</span>
+            </div>
+            <div class="chart-wrap" style="height:280px">
+              <canvas id="chart-trend"></canvas>
+            </div>
+          </div>
+
+          <!-- 情緒雷達圖 -->
+          <div class="card" style="margin-top:16px">
+            <div class="card-header">
+              <h3 class="card-title">Global Emotion Radar</h3>
+              <span class="card-hint">Cumulative average across all sessions</span>
+            </div>
+            <div class="chart-wrap" style="height:240px">
+              <canvas id="chart-radar"></canvas>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- 活躍度熱力圖 -->
+      <div class="card" style="margin-top:16px">
+        <div class="card-header">
+          <h3 class="card-title">Daily Activity</h3>
+          <span class="card-hint">Stream frequency over time (GitHub-style)</span>
+        </div>
+        <div id="heatmap-container" class="heatmap-container">
+          <!-- 動態生成 -->
+        </div>
+      </div>
+    </div>
+  </template>
+
+  <!-- 模板：Session 詳情頁 -->
+  <template id="tpl-session-detail">
+    <div class="page" id="page-session-detail">
+      <!-- 返回按鈕 + 場次 ID -->
+      <div class="detail-header">
+        <a href="#/" class="btn-back">← Back to Sessions</a>
+        <span class="detail-session-id" id="detail-session-id"></span>
+      </div>
+
+      <!-- 頂部摘要卡片 -->
+      <div class="summary-grid" id="summary-grid">
+        <!-- 動態生成 -->
+      </div>
+
+      <!-- 情緒時間軸 -->
+      <div class="card">
+        <div class="card-header">
+          <h3 class="card-title">Emotion Timeline</h3>
+          <div class="legend" id="timeline-legend"></div>
+        </div>
+        <div class="chart-wrap" style="height:300px">
+          <canvas id="chart-timeline"></canvas>
+        </div>
+      </div>
+
+      <!-- 高光列表 -->
+      <div class="card" style="margin-top:16px">
+        <div class="card-header">
+          <h3 class="card-title">⚡ Highlights</h3>
+          <span class="card-hint" id="highlight-count"></span>
+        </div>
+        <div id="highlights-container">
+          <!-- 動態生成 -->
+        </div>
+      </div>
+
+      <!-- 導出按鈕 -->
+      <div class="export-bar">
+        <span class="export-label">Export:</span>
+        <button class="btn-export" data-format="json">JSON</button>
+        <button class="btn-export" data-format="csv">CSV</button>
+        <button class="btn-export" data-format="html">HTML Report</button>
+      </div>
+    </div>
+  </template>
+
+  <!-- ── 應用程式腳本 ────────────────────────────────────────── -->
+  <script src="app.js"></script>
+</body>
+</html>

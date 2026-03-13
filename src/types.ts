@@ -62,6 +62,17 @@ export interface Config {
   analyzer: {
     mode: 'rules' | 'llm';
     snapshotIntervalMs: number;
+    /** LLM 模式專屬設定（mode === 'llm' 時必填） */
+    llm?: {
+      /** Gemini API Key */
+      apiKey: string;
+      /** 模型名稱，預設 gemini-2.0-flash */
+      model?: string;
+      /** 批次送出間隔（毫秒），預設 5000ms */
+      batchIntervalMs?: number;
+      /** 回應最大 token 數，預設 256 */
+      maxTokens?: number;
+    };
   };
   highlight: {
     windowSec: number;

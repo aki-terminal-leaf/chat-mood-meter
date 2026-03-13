@@ -11,6 +11,7 @@
 
 import type { Config, ChatMessage, EmotionSnapshot } from '../types.js';
 import { RulesAnalyzer } from './rules.js';
+import { LLMAnalyzer } from './llm.js';
 import { EventEmitter } from 'events';
 
 // ─────────────────────────────────────────────
@@ -62,11 +63,22 @@ export function createAnalyzer(config: Config): Analyzer {
     case 'rules':
       return new RulesAnalyzer({ snapshotIntervalMs });
 
-    case 'llm':
-      // TODO: 未來實作 LLM 模式（呼叫 OpenAI / Claude API 做情緒推論）
-      // 暫時 fallback 到 rules 並警告
-      console.warn('[Analyzer] LLM 模式尚未實作，暫時使用 rules 模式');
-      return new RulesAnalyzer({ snapshotIntervalMs });
+    case 'llm': {
+      // LLM 模式：使用 Gemini API 做情緒推論
+      const llmConfig = config.analyzer.llm;
+      if (!llmConfig?.apiKey) {
+        // API Key 未設定時，fallback 到 rules 並警告
+        console.warn('[Analyzer] LLM 模式缺少 apiKey，fallback 到 rules 模式');
+        return new RulesAnalyzer({ snapshotIntervalMs });
+      }
+      return new LLMAnalyzer({
+        apiKey:            llmConfig.apiKey,
+        model:             llmConfig.model,
+        batchIntervalMs:   llmConfig.batchIntervalMs,
+        maxTokens:         llmConfig.maxTokens,
+        snapshotIntervalMs,
+      });
+    }
 
     default: {
       // 型別系統應該擋住這裡，但以防萬一
@@ -81,5 +93,6 @@ export function createAnalyzer(config: Config): Analyzer {
 // ─────────────────────────────────────────────
 
 export { RulesAnalyzer } from './rules.js';
+export { LLMAnalyzer } from './llm.js';
 export { EMOTE_MAP, KEYWORD_MAP } from './emote-map.js';
 export type { EmoteEntry, EmoteMap } from './emote-map.js';
