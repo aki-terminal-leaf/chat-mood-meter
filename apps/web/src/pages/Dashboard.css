@@ -1,0 +1,205 @@
+.dashboard {
+  padding: 24px;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+/* ─── Stats Banner ─── */
+.stats-banner {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-bottom: 32px;
+}
+
+.stat-card {
+  background: #1a1f26;
+  border: 1px solid #2a3040;
+  border-radius: 12px;
+  padding: 24px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: border-color 0.2s;
+}
+
+.stat-card:hover {
+  border-color: #7c6aff;
+}
+
+.stat-number {
+  font-size: 2.4rem;
+  font-weight: 700;
+  color: #e8eaf0;
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+
+.stat-label {
+  font-size: 0.8rem;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+/* ─── Dashboard Body ─── */
+.dashboard-body {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+}
+
+.section-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #9ca3af;
+  margin: 0 0 16px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* ─── Sessions Table ─── */
+.sessions-section {
+  background: #1a1f26;
+  border: 1px solid #2a3040;
+  border-radius: 12px;
+  padding: 20px 24px;
+}
+
+.sessions-table-wrapper {
+  overflow-x: auto;
+}
+
+.sessions-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.sessions-table th {
+  text-align: left;
+  padding: 8px 12px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #6b7280;
+  border-bottom: 1px solid #2a3040;
+  white-space: nowrap;
+}
+
+.sessions-table td {
+  padding: 12px;
+  border-bottom: 1px solid #1e2530;
+  color: #c9d1dc;
+  vertical-align: middle;
+}
+
+.sessions-table tr:last-child td {
+  border-bottom: none;
+}
+
+.sessions-table tr:hover td {
+  background: #1e2530;
+}
+
+.date-cell a {
+  color: #7c6aff;
+  text-decoration: none;
+  font-size: 0.85rem;
+}
+
+.date-cell a:hover {
+  color: #a594ff;
+  text-decoration: underline;
+}
+
+.channel-cell {
+  font-weight: 500;
+  color: #e8eaf0 !important;
+}
+
+.highlight-cell {
+  color: #ffd166 !important;
+  font-weight: 600;
+}
+
+.emotion-cell {
+  font-size: 1.2rem;
+  text-align: center;
+}
+
+/* Status Badges */
+.status-badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.status-live {
+  background: #0d2b1a;
+  color: #34d399;
+  border: 1px solid #065f46;
+}
+
+.status-ended {
+  background: #1e2530;
+  color: #6b7280;
+  border: 1px solid #374151;
+}
+
+.status-idle {
+  background: #1e2a3a;
+  color: #60a5fa;
+  border: 1px solid #1e40af;
+}
+
+/* ─── Chart ─── */
+.chart-section {
+  background: #1a1f26;
+  border: 1px solid #2a3040;
+  border-radius: 12px;
+  padding: 20px 24px;
+}
+
+.chart-container {
+  height: 260px;
+  position: relative;
+}
+
+/* ─── States ─── */
+.empty-state,
+.loading-state {
+  text-align: center;
+  padding: 48px 0;
+  color: #4b5563;
+  font-size: 0.95rem;
+}
+
+/* ─── Responsive ─── */
+@media (max-width: 640px) {
+  .dashboard {
+    padding: 16px;
+  }
+
+  .stats-banner {
+    grid-template-columns: 1fr;
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+
+  .stat-number {
+    font-size: 1.8rem;
+  }
+
+  .sessions-section,
+  .chart-section {
+    padding: 16px;
+    border-radius: 8px;
+  }
+
+  .sessions-table th:nth-child(4),
+  .sessions-table td:nth-child(4) {
+    display: none;
+  }
+}

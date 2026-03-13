@@ -1,0 +1,98 @@
+.login-page {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  background: var(--bg-primary);
+  padding: 20px;
+}
+
+.login-box {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 48px 40px;
+  width: 100%;
+  max-width: 400px;
+  text-align: center;
+}
+
+.login-logo {
+  font-size: 48px;
+  margin-bottom: 12px;
+}
+
+.login-title {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+
+.login-subtitle {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin-bottom: 36px;
+  line-height: 1.6;
+}
+
+.login-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-bottom: 24px;
+}
+
+.login-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 14px 24px;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 600;
+  border: none;
+  transition: transform 0.15s, opacity 0.15s;
+  width: 100%;
+}
+
+.login-btn:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+
+.login-btn:active {
+  transform: translateY(0);
+}
+
+.btn-icon {
+  display: flex;
+  align-items: center;
+}
+
+/* Twitch 紫色 */
+.twitch-btn {
+  background: #9146ff;
+  color: #fff;
+}
+
+.twitch-btn:hover {
+  background: #a259ff;
+}
+
+/* YouTube 紅色 */
+.youtube-btn {
+  background: #ff0000;
+  color: #fff;
+}
+
+.youtube-btn:hover {
+  background: #cc0000;
+}
+
+.login-note {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}

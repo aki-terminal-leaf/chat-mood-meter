@@ -1,0 +1,250 @@
+.landing {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-primary);
+}
+
+/* ── Header ── */
+.landing-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 48px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-secondary);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.landing-logo {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.header-login-btn {
+  font-size: 13px;
+  padding: 6px 16px;
+}
+
+/* ── Hero ── */
+.hero {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 48px;
+  align-items: center;
+  padding: 80px 48px;
+  max-width: 1100px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.hero-title {
+  font-size: 48px;
+  font-weight: 800;
+  line-height: 1.2;
+  margin-bottom: 20px;
+  color: var(--text-primary);
+}
+
+.accent-text {
+  color: var(--accent);
+}
+
+.hero-subtitle {
+  font-size: 18px;
+  color: var(--text-secondary);
+  line-height: 1.7;
+  margin-bottom: 32px;
+}
+
+.cta-btn {
+  font-size: 16px;
+  padding: 12px 28px;
+  border-radius: 8px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+
+/* ── Mood Preview ── */
+.hero-visual {
+  display: flex;
+  justify-content: center;
+}
+
+.mood-preview {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 28px;
+  width: 100%;
+  max-width: 380px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.mood-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.mood-bar span:first-child {
+  width: 80px;
+  flex-shrink: 0;
+  color: var(--text-secondary);
+}
+
+.bar-fill {
+  flex: 1;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--border);
+  position: relative;
+  overflow: hidden;
+}
+
+.mood-bar.hype .bar-fill::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  background: var(--hype);
+  border-radius: 4px;
+}
+
+.mood-bar.funny .bar-fill::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--funny);
+  border-radius: 4px;
+}
+
+.mood-bar.sad .bar-fill::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--sad);
+  border-radius: 4px;
+}
+
+.mood-bar.angry .bar-fill::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--angry);
+  border-radius: 4px;
+}
+
+.bar-pct {
+  width: 36px;
+  text-align: right;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+/* ── Features ── */
+.features {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+  padding: 0 48px 80px;
+  max-width: 1100px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.feature-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 28px;
+  transition: border-color 0.2s;
+}
+
+.feature-card:hover {
+  border-color: var(--accent);
+}
+
+.feature-icon {
+  font-size: 32px;
+  margin-bottom: 14px;
+}
+
+.feature-card h3 {
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 10px;
+  color: var(--text-primary);
+}
+
+.feature-card p {
+  font-size: 14px;
+  color: var(--text-secondary);
+  line-height: 1.7;
+}
+
+/* ── Bottom CTA ── */
+.bottom-cta {
+  text-align: center;
+  padding: 60px 48px;
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border);
+}
+
+.bottom-cta h2 {
+  font-size: 32px;
+  font-weight: 700;
+  margin-bottom: 12px;
+}
+
+.bottom-cta p {
+  font-size: 16px;
+  color: var(--text-secondary);
+  margin-bottom: 28px;
+}
+
+/* ── Footer ── */
+.landing-footer {
+  text-align: center;
+  padding: 20px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  border-top: 1px solid var(--border);
+  margin-top: auto;
+}
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+  .landing-header {
+    padding: 14px 20px;
+  }
+
+  .hero {
+    grid-template-columns: 1fr;
+    padding: 40px 20px;
+    gap: 32px;
+  }
+
+  .hero-title {
+    font-size: 32px;
+  }
+
+  .hero-subtitle {
+    font-size: 16px;
+  }
+
+  .features {
+    grid-template-columns: 1fr;
+    padding: 0 20px 48px;
+  }
+
+  .bottom-cta {
+    padding: 40px 20px;
+  }
+}

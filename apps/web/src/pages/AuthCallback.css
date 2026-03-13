@@ -1,0 +1,58 @@
+.callback-page {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  background: var(--bg-primary);
+}
+
+.callback-box {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 48px 40px;
+  text-align: center;
+  min-width: 300px;
+}
+
+.callback-box h2 {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+
+.callback-box p {
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+/* ── Spinner ── */
+.callback-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin: 0 auto 20px;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ── Error state ── */
+.callback-box.error {
+  border-color: var(--danger);
+}
+
+.callback-icon {
+  font-size: 40px;
+  margin-bottom: 16px;
+}
+
+.error-msg {
+  color: var(--danger) !important;
+  margin-bottom: 20px;
+}
