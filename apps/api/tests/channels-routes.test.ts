@@ -1,7 +1,7 @@
 /**
  * channels-routes.test.ts — Channels 路由整合測試
  *
- * 使用真實 PostgreSQL（postgresql://cmm:cmm_dev_2026@localhost:5432/chatmoodmeter）
+ * 使用真實 PostgreSQL（postgresql://cmm:<env>@localhost:5432/chatmoodmeter）
  * 測試 CRUD 操作與權限控制
  */
 
@@ -17,7 +17,7 @@ import { createAuthMiddleware } from '../src/middleware/auth.js';
 
 // ── 常數 ──────────────────────────────────────────────────────────────────────
 
-const DB_URL     = 'postgresql://cmm:cmm_dev_2026@localhost:5432/chatmoodmeter';
+const DB_URL = process.env.DATABASE_URL!;
 const JWT_SECRET = 'test-jwt-secret-at-least-32-chars!!';
 
 // ── 全域狀態 ──────────────────────────────────────────────────────────────────

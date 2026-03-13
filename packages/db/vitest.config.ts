@@ -1,5 +1,8 @@
 import { defineConfig } from 'vitest/config';
+import { config } from 'dotenv';
 import { resolve } from 'node:path';
+
+config({ path: resolve(__dirname, '../../.env') });
 
 export default defineConfig({
   test: {
@@ -9,7 +12,6 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      // 讓 @cmm/core 直接解析到 packages/core/src，不需要先 build
       '@cmm/core': resolve(__dirname, '../core/src/index.ts'),
       '@cmm/core/types': resolve(__dirname, '../core/src/types.ts'),
     },

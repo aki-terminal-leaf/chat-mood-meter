@@ -5,6 +5,6 @@ export default defineConfig({
   out: './migrations',
   dialect: 'postgresql',
   dbCredentials: {
-    url: process.env.DATABASE_URL ?? 'postgresql://cmm:cmm_dev_2026@localhost:5432/chatmoodmeter',
+    url: process.env.DATABASE_URL ?? (() => { throw new Error('DATABASE_URL is required'); })(),
   },
 });

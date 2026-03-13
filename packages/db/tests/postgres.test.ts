@@ -3,7 +3,7 @@
  * PostgresDB 整合測試：使用真實 PostgreSQL，驗證所有 CRUD 操作。
  *
  * 需要執行中的 PostgreSQL：
- *   postgresql://cmm:cmm_dev_2026@localhost:5432/chatmoodmeter
+ *   postgresql://cmm:<env>@localhost:5432/chatmoodmeter
  *
  * 執行方式：
  *   pnpm test --run packages/db/tests/postgres.test.ts
@@ -20,7 +20,7 @@ import type { EmotionSnapshot, HighlightMarker } from '@cmm/core/types';
 
 // ─── 測試常數 ────────────────────────────────────────────────
 
-const DB_URL = 'postgresql://cmm:cmm_dev_2026@localhost:5432/chatmoodmeter';
+const DB_URL = process.env.DATABASE_URL!;
 
 // ─── 工具函式 ────────────────────────────────────────────────
 
