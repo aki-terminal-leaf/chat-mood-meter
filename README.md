@@ -8,6 +8,10 @@
 ![Node.js](https://img.shields.io/badge/Node.js-18+-green)
 ![License](https://img.shields.io/badge/License-MIT-yellow)
 
+<p align="center">
+  <img src="docs/overlay-preview.jpg" alt="Overlay Preview" width="500" />
+</p>
+
 ## ✨ 功能
 
 - **即時情緒分析** — 153 個 emote/關鍵詞映射，涵蓋歐美 Twitch、台灣中文、日文、Unicode emoji
