@@ -7,10 +7,21 @@
     "apps/*"
   ],
   "scripts": {
-    "build": "turbo build",
     "dev": "turbo dev",
-    "test": "turbo test",
-    "test:root": "vitest run"
+    "dev:api": "npm run dev -w apps/api",
+    "dev:web": "npm run dev -w apps/web",
+    "dev:worker": "npm run dev -w apps/worker",
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "test:root": "vitest run",
+    "test:api": "npm test -w apps/api",
+    "test:worker": "npm test -w apps/worker",
+    "test:packages": "turbo run test --filter='./packages/*'",
+    "db:migrate": "npm run db:migrate -w packages/db",
+    "db:generate": "npm run db:generate -w packages/db",
+    "lint": "turbo run lint",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down"
   },
   "devDependencies": {
     "@vitest/coverage-v8": "^4.1.0",
@@ -19,6 +30,7 @@
     "vitest": "^4.1.0"
   },
   "dependencies": {
+    "@fastify/static": "^9.0.0",
     "@types/pg": "^8.18.0",
     "chart.js": "^4.5.1",
     "dotenv": "^17.3.1",
