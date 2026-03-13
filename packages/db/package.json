@@ -10,13 +10,20 @@
   },
   "scripts": {
     "build": "tsc",
-    "test": "vitest run"
+    "test": "vitest run",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
-    "better-sqlite3": "^12.6.2"
+    "better-sqlite3": "^12.6.2",
+    "drizzle-orm": "^0.44.0",
+    "pg": "^8.13.3"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
+    "@types/pg": "^8.11.11",
+    "drizzle-kit": "^0.30.4",
     "typescript": "^5.9.3",
     "vitest": "^4.1.0"
   },
