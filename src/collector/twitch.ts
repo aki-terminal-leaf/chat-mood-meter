@@ -99,7 +99,8 @@ export class TwitchCollector extends EventEmitter {
         };
       }
 
-      this.client = new tmi.Client(clientOptions) as TmiClient;
+      const TmiClient = tmi.Client ?? tmi.client ?? (tmi.default && (tmi.default.Client ?? tmi.default.client));
+      this.client = new TmiClient(clientOptions) as TmiClient;
       this.bindEvents();
       await this.client.connect();
       // 連線成功後重置重連延遲

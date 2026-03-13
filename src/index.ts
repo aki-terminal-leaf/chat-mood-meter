@@ -53,18 +53,29 @@ async function main(): Promise<void> {
   // 4. 串接 Highlight 偵測（analyzer → detector → server + obs）
   setupHighlight(analyzer, server, obsMarker, config);
 
-  // 5. 串接 Storage（自動寫入 snapshot + highlight）
-  const { db, exporter } = setupStorage(server, config);
+  // 5. 串接 Storage
+  const storage = setupStorage(server, config);
 
-  // 6. Analyzer snapshot → server 推送
+  // 6. Analyzer snapshot → server 推送 + storage 寫入
   analyzer.on('snapshot', (snapshot) => {
     server.pushSnapshot(snapshot);
+    storage.saveSnapshot(snapshot);
   });
 
-  // 7. 啟動聊天收集器
+  // 7. 啟動 Analyzer
+  analyzer.start();
+
+  // 8. 啟動聊天收集器
   const collector = new Collector(config);
+  let msgCount = 0;
 
   collector.on('message', (msg: ChatMessage) => {
+    msgCount++;
+    if (msgCount <= 3) {
+      console.log(`[Chat] ${msg.user}: ${msg.text}`);
+    } else if (msgCount === 4) {
+      console.log('[Chat] （後續訊息省略 log...）');
+    }
     // 轉發 chat 訊息給 overlay
     server.pushChat(msg);
     // 送進 analyzer
@@ -96,8 +107,8 @@ async function main(): Promise<void> {
     analyzer.stop();
     await collector.stop();
     await obsMarker.disconnect();
-    db.endSession();
-    db.close();
+    storage.endSession();
+    storage.db.close();
     await server.stop();
     console.log('[Main] 已安全關閉。');
     process.exit(0);

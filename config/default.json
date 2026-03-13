@@ -2,7 +2,7 @@
   "platforms": {
     "twitch": {
       "enabled": true,
-      "channel": "",
+      "channel": "xqc",
       "token": ""
     },
     "youtube": {
