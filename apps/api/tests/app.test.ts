@@ -10,6 +10,9 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { buildApp } from '../src/index.js';
 import type { AppInstance } from '../src/index.js';
 
@@ -144,5 +147,96 @@ describe('Fastify App', () => {
   it('WSHub.register 與 WSHub.start 應被呼叫', () => {
     expect((instance.wsHub as ReturnType<typeof makeMockWsHub>).register).toHaveBeenCalledOnce();
     expect((instance.wsHub as ReturnType<typeof makeMockWsHub>).start).toHaveBeenCalledOnce();
+  });
+});
+
+// ── Static Serving + SPA Fallback 測試 ───────────────────────────────────────
+
+describe('Static Serving + SPA Fallback', () => {
+  let spaInstance: AppInstance;
+
+  // src/index.ts 中，publicDir = path.join(import.meta.dirname, 'public')
+  // import.meta.dirname 解析為 src/ 目錄
+  const testDir = fileURLToPath(new URL('.', import.meta.url));
+  const publicDir = path.join(testDir, '../src/public');
+  const indexHtml = path.join(publicDir, 'index.html');
+
+  beforeAll(async () => {
+    // 建立假的 public/index.html（讓 fastifyStatic 和 SPA fallback 可以正常運作）
+    fs.mkdirSync(publicDir, { recursive: true });
+    fs.writeFileSync(
+      indexHtml,
+      '<!DOCTYPE html><html><head><title>Test SPA</title></head><body><div id="root"></div></body></html>',
+    );
+
+    spaInstance = await buildApp({
+      logger: false,
+      deps: {
+        db:    makeMockDb(),
+        pool:  makeMockPool(),
+        wsHub: makeMockWsHub(),
+      },
+    });
+    await spaInstance.app.ready();
+  });
+
+  afterAll(async () => {
+    await spaInstance.app.close();
+    // 清除測試用的假 public 目錄
+    fs.rmSync(publicDir, { recursive: true, force: true });
+  });
+
+  // ── 測試 SPA Fallback ────────────────────────────────────────────────────
+
+  it('GET /nonexistent-page → 應回 index.html（SPA fallback）', async () => {
+    const res = await spaInstance.app.inject({
+      method: 'GET',
+      url:    '/nonexistent-page',
+    });
+
+    // SPA fallback 回傳 index.html
+    expect(res.statusCode).toBe(200);
+    const body = res.body;
+    expect(body).toContain('<!DOCTYPE html>');
+    expect(body).toContain('Test SPA');
+  });
+
+  it('GET /some/deep/route → 也應回 index.html（SPA fallback）', async () => {
+    const res = await spaInstance.app.inject({
+      method: 'GET',
+      url:    '/some/deep/route',
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toContain('<!DOCTYPE html>');
+  });
+
+  // ── 測試 /api/* 不走 SPA fallback ────────────────────────────────────────
+
+  it('GET /api/nonexistent → 應回 404 JSON（不走 SPA fallback）', async () => {
+    const res = await spaInstance.app.inject({
+      method: 'GET',
+      url:    '/api/nonexistent',
+    });
+
+    expect(res.statusCode).toBe(404);
+    const body = res.json();
+    expect(body).toHaveProperty('error');
+    // 確認不是 HTML
+    expect(res.headers['content-type']).toContain('application/json');
+  });
+
+  // ── 測試 /auth/* 不走 SPA fallback ───────────────────────────────────────
+
+  it('GET /auth/nonexistent → 應回 404 JSON（不走 SPA fallback）', async () => {
+    const res = await spaInstance.app.inject({
+      method: 'GET',
+      url:    '/auth/nonexistent',
+    });
+
+    expect(res.statusCode).toBe(404);
+    const body = res.json();
+    expect(body).toHaveProperty('error');
+    expect(res.headers['content-type']).toContain('application/json');
   });
 });
