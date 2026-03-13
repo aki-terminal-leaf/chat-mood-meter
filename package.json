@@ -7,7 +7,10 @@
   "scripts": {
     "build": "esbuild src/index.ts --bundle --platform=node --format=esm --outdir=dist --external:tmi.js --external:ws --external:better-sqlite3",
     "dev": "tsx src/index.ts",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
   },
   "keywords": [
     "twitch",
@@ -23,7 +26,9 @@
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^25.5.0",
     "@types/ws": "^8.18.1",
-    "typescript": "^5.9.3"
+    "@vitest/coverage-v8": "^4.1.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.0"
   },
   "repository": {
     "type": "git",
