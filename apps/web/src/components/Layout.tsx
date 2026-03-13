@@ -11,8 +11,11 @@ export default function Layout() {
         <div className="logo">🎭 CMM</div>
 
         <div className="nav-links">
-          <NavLink to="/dashboard" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
+          <NavLink to="/dashboard" end className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
             📊 Dashboard
+          </NavLink>
+          <NavLink to="/dashboard/live" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
+            🔴 即時監控
           </NavLink>
           <NavLink to="/settings" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
             ⚙️ Settings
