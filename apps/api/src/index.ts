@@ -8,7 +8,9 @@ import Fastify from 'fastify';
 import fastifyCookie from '@fastify/cookie';
 import fastifyCors from '@fastify/cors';
 import fastifyWebsocket from '@fastify/websocket';
+import fastifyStatic from '@fastify/static';
 import { Pool } from 'pg';
+import path from 'path';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type { FastifyInstance } from 'fastify';
@@ -98,6 +100,22 @@ export async function buildApp(opts?: BuildAppOptions): Promise<AppInstance> {
     timestamp: new Date().toISOString(),
     version:   '0.2.0',
   }));
+
+  // ── 靜態檔案（前端 SPA） ──────────────────────────────────────────────────
+  const publicDir = path.join(
+    // ESM 環境用 import.meta.dirname，CJS 環境退回 __dirname
+    (import.meta as { dirname?: string }).dirname ?? __dirname,
+    'public',
+  );
+  await app.register(fastifyStatic, { root: publicDir, prefix: '/' });
+
+  // SPA fallback：非 /api、/auth 的路由一律回 index.html
+  app.setNotFoundHandler(async (req, reply) => {
+    if (req.url.startsWith('/api/') || req.url.startsWith('/auth/')) {
+      return reply.status(404).send({ error: 'Not found' });
+    }
+    return reply.sendFile('index.html');
+  });
 
   // ── Graceful Shutdown ──────────────────────────────────────────────────────
   const shutdown = async (): Promise<void> => {
