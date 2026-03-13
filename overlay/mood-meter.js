@@ -20,6 +20,17 @@ const urlParams = new URLSearchParams(window.location.search);
 /** WebSocket 連接埠，預設 9800 */
 const WS_PORT = parseInt(urlParams.get('port') || '9800', 10);
 
+/** WebSocket host，預設使用當前頁面的 host（支援 tunnel） */
+const WS_HOST = urlParams.get('wsHost') || window.location.hostname || 'localhost';
+
+/** WebSocket 協定，HTTPS 時自動用 wss */
+const WS_PROTOCOL = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+
+/** 完整 WebSocket URL（tunnel 時用 443/不帶 port，本地時用指定 port） */
+const WS_URL = window.location.hostname && window.location.hostname !== 'localhost'
+  ? `${WS_PROTOCOL}//${WS_HOST}`
+  : `ws://${WS_HOST}:${WS_PORT}`;
+
 /** 波形圖顯示歷史分鐘數，預設 5 分鐘 */
 const HISTORY_MINUTES = parseFloat(urlParams.get('history') || '5');
 
@@ -105,7 +116,7 @@ function connect() {
   setConnectionState('connecting');
 
   try {
-    ws = new WebSocket(`ws://localhost:${WS_PORT}`);
+    ws = new WebSocket(WS_URL);
   } catch (err) {
     console.error('[MoodMeter] WebSocket 建立失敗：', err);
     scheduleReconnect();
@@ -113,7 +124,7 @@ function connect() {
   }
 
   ws.addEventListener('open', () => {
-    console.log(`[MoodMeter] 已連線 ws://localhost:${WS_PORT}`);
+    console.log(`[MoodMeter] 已連線 ${WS_URL}`);
     setConnectionState('connected');
     // 連線成功，重置退避延遲
     reconnectDelay = 1000;
