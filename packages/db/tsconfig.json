@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "esModuleInterop": true,
+    "declaration": true,
+    "outDir": "dist",
+    "rootDir": "src",
+    "paths": {
+      "@cmm/core": ["../core/src/index.ts"],
+      "@cmm/core/*": ["../core/src/*"]
+    }
+  },
+  "include": ["src"],
+  "references": [
+    { "path": "../core" }
+  ]
+}

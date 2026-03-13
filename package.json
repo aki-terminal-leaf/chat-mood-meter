@@ -1,49 +1,21 @@
 {
   "name": "chat-mood-meter",
-  "version": "0.1.0",
-  "description": "即時聊天情緒熱力儀表板 + 自動高光標記系統",
-  "type": "module",
-  "main": "dist/index.js",
-  "scripts": {
-    "build": "esbuild src/index.ts --bundle --platform=node --format=esm --outdir=dist --external:tmi.js --external:ws --external:better-sqlite3",
-    "dev": "tsx src/index.ts",
-    "start": "node dist/index.js",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
-  },
-  "keywords": [
-    "twitch",
-    "youtube",
-    "livestream",
-    "mood",
-    "overlay",
-    "obs"
+  "version": "0.2.0",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "apps/*"
   ],
-  "author": "aki-terminal-leaf",
-  "license": "MIT",
+  "scripts": {
+    "build": "turbo build",
+    "dev": "turbo dev",
+    "test": "turbo test",
+    "test:root": "vitest run"
+  },
   "devDependencies": {
-    "@types/better-sqlite3": "^7.6.13",
-    "@types/node": "^25.5.0",
-    "@types/ws": "^8.18.1",
     "@vitest/coverage-v8": "^4.1.0",
+    "turbo": "^2.5.0",
     "typescript": "^5.9.3",
     "vitest": "^4.1.0"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/aki-terminal-leaf/chat-mood-meter.git"
-  },
-  "bugs": {
-    "url": "https://github.com/aki-terminal-leaf/chat-mood-meter/issues"
-  },
-  "homepage": "https://github.com/aki-terminal-leaf/chat-mood-meter#readme",
-  "dependencies": {
-    "better-sqlite3": "^12.6.2",
-    "esbuild": "^0.27.4",
-    "obs-websocket-js": "^5.0.7",
-    "tmi.js": "^1.8.5",
-    "tsx": "^4.21.0",
-    "ws": "^8.19.0"
   }
 }
