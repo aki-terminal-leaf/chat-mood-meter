@@ -3,8 +3,6 @@
  *
  * 測試 exportJSON / exportCSV / exportHTML / exportEDL / exportChapters / exportSRT
  * 所有函式接受 ExportOptions，回傳字串，不寫入磁碟。
- *
- * 改寫自 tests/storage-export.test.ts，適配新的純函式 API。
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
@@ -59,7 +57,8 @@ describe('@cmm/export', () => {
         makeSnapshot({ timestamp: base + 2000, dominant: 'funny', intensity: 0.5, messageCount: 6  }),
       ],
       highlights: [
-        makeHighlight({ timestamp: base + 1000, emotion: 'hype', intensity: 0.8 }),
+        makeHighlight({ timestamp: base + 1000, emotion: 'hype',  intensity: 0.92, sampleMessages: ['chat exploded'] }),
+        makeHighlight({ timestamp: base + 5000, emotion: 'funny', intensity: 0.85, sampleMessages: ['dying of laughter'] }),
       ],
     };
   });
@@ -87,7 +86,7 @@ describe('@cmm/export', () => {
 
     it('highlights 數量正確', () => {
       const data = JSON.parse(exportJSON(opts));
-      expect(data.highlights).toHaveLength(1);
+      expect(data.highlights).toHaveLength(2);
     });
 
     it('session.id 包含 sessionId', () => {
@@ -189,27 +188,132 @@ describe('@cmm/export', () => {
   // ── exportEDL() ──────────────────────────────────────────────
 
   describe('exportEDL()', () => {
-    it('回傳字串（TODO M6，目前回傳空字串）', () => {
+    it('有 TITLE 行', () => {
       const result = exportEDL(opts);
-      expect(typeof result).toBe('string');
+      expect(result).toContain('TITLE:');
+    });
+
+    it('有 FCM: NON-DROP FRAME', () => {
+      const result = exportEDL(opts);
+      expect(result).toContain('FCM: NON-DROP FRAME');
+    });
+
+    it('每個 highlight 對應一個 edit event（* HIGHLIGHT: 行數等於 highlights 數量）', () => {
+      const result = exportEDL(opts);
+      const count = (result.match(/\* HIGHLIGHT:/g) ?? []).length;
+      expect(count).toBe(opts.highlights.length);
+    });
+
+    it('timecode 格式正確（HH:MM:SS:FF）', () => {
+      const result = exportEDL(opts);
+      expect(result).toMatch(/\d{2}:\d{2}:\d{2}:\d{2}/);
+    });
+
+    it('event 編號格式正確（001 開始）', () => {
+      const result = exportEDL(opts);
+      expect(result).toContain('001');
+    });
+
+    it('空 highlights → 只有 header，無 * HIGHLIGHT:', () => {
+      const result = exportEDL({ ...opts, highlights: [] });
+      expect(result).toContain('TITLE:');
+      expect(result).toContain('FCM: NON-DROP FRAME');
+      expect(result).not.toContain('* HIGHLIGHT:');
+    });
+
+    it('包含情緒名稱（大寫）', () => {
+      const result = exportEDL(opts);
+      expect(result).toContain('HYPE');
+    });
+
+    it('包含強度百分比', () => {
+      const result = exportEDL(opts);
+      expect(result).toMatch(/\d+%/);
     });
   });
 
   // ── exportChapters() ─────────────────────────────────────────
 
   describe('exportChapters()', () => {
-    it('回傳字串（TODO M6，目前回傳空字串）', () => {
+    it('第一行是 00:00:00 Stream Start', () => {
       const result = exportChapters(opts);
-      expect(typeof result).toBe('string');
+      const firstLine = result.split('\n')[0];
+      expect(firstLine).toBe('00:00:00 Stream Start');
+    });
+
+    it('有正確 emoji（hype → 🔥）', () => {
+      const result = exportChapters(opts);
+      expect(result).toContain('🔥');
+    });
+
+    it('funny highlight 有對應 emoji（😂）', () => {
+      const result = exportChapters(opts);
+      expect(result).toContain('😂');
+    });
+
+    it('有 offset 時間（HH:MM:SS 格式）', () => {
+      const result = exportChapters(opts);
+      expect(result).toMatch(/\d{2}:\d{2}:\d{2}/);
+    });
+
+    it('行數 = 1（Stream Start）+ highlights 數量', () => {
+      const result = exportChapters(opts);
+      const lines = result.split('\n').filter(l => l.trim() !== '');
+      expect(lines.length).toBe(1 + opts.highlights.length);
+    });
+
+    it('空 highlights → 只有第一行', () => {
+      const result = exportChapters({ ...opts, highlights: [] });
+      const lines = result.split('\n').filter(l => l.trim() !== '');
+      expect(lines.length).toBe(1);
+      expect(lines[0]).toBe('00:00:00 Stream Start');
     });
   });
 
   // ── exportSRT() ──────────────────────────────────────────────
 
   describe('exportSRT()', () => {
-    it('回傳字串（TODO M6，目前回傳空字串）', () => {
+    it('有序號（第一個字幕的序號為 1）', () => {
       const result = exportSRT(opts);
-      expect(typeof result).toBe('string');
+      expect(result).toMatch(/^1\n/);
+    });
+
+    it('有 --> 時間範圍', () => {
+      const result = exportSRT(opts);
+      expect(result).toContain('-->');
+    });
+
+    it('時間格式為 HH:MM:SS,mmm', () => {
+      const result = exportSRT(opts);
+      expect(result).toMatch(/\d{2}:\d{2}:\d{2},\d{3}/);
+    });
+
+    it('有 emoji + 情緒（hype → 🔥 HYPE）', () => {
+      const result = exportSRT(opts);
+      expect(result).toContain('🔥');
+      expect(result).toContain('HYPE');
+    });
+
+    it('有強度百分比', () => {
+      const result = exportSRT(opts);
+      expect(result).toMatch(/\d+% intensity/);
+    });
+
+    it('包含 sampleMessages[0]', () => {
+      const result = exportSRT(opts);
+      expect(result).toContain('chat exploded');
+    });
+
+    it('字幕段落數等於 highlights 數量', () => {
+      const result = exportSRT(opts);
+      // SRT 序號以純數字行出現，抓 /^\d+$/m
+      const seqMatches = result.match(/^\d+$/gm) ?? [];
+      expect(seqMatches.length).toBe(opts.highlights.length);
+    });
+
+    it('空 highlights → 空字串', () => {
+      const result = exportSRT({ ...opts, highlights: [] });
+      expect(result).toBe('');
     });
   });
 });

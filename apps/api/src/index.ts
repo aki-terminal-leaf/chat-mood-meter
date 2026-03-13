@@ -83,7 +83,7 @@ export async function buildApp(opts?: BuildAppOptions): Promise<AppInstance> {
   await sessionRoutes(app, { db, authMiddleware });
   await channelRoutes(app, { db, authMiddleware });
   await workerRoutes(app,  { authMiddleware, getWorkerStats: () => [] });
-  await exportRoutes(app,  {});   // M6 實作
+  await exportRoutes(app,  { db, authMiddleware });
 
   // ── WebSocket Hub ──────────────────────────────────────────────────────────
   const wsHub: ExternalDeps['wsHub'] & object =

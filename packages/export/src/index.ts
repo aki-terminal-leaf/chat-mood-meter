@@ -47,6 +47,15 @@ const EMOTION_COLOR: Record<string, string> = {
   neutral: '#94a3b8',
 };
 
+/** 情緒 emoji 對照（EDL / Chapters / SRT 用） */
+const EMOTION_EMOJI: Record<string, string> = {
+  hype:    '🔥',
+  funny:   '😂',
+  sad:     '😢',
+  angry:   '😠',
+  neutral: '😐',
+};
+
 // ──────────────────────────────────────────
 // 導出函式
 // ──────────────────────────────────────────
@@ -132,43 +141,106 @@ export function exportCSV(opts: ExportOptions): string {
 
 /**
  * exportEDL
- * 將高光時刻導出為 EDL（Edit Decision List）格式。
- * TODO M6 實作
+ * 將高光時刻導出為 CMX3600 EDL 格式（Premiere / DaVinci Resolve）。
+ * 每個 highlight 一個 edit event，timecode 基於 30fps。
  */
-export function exportEDL(_opts: ExportOptions): string {
-  // TODO M6：實作 EDL 導出
-  // EDL 格式範例（CMX 3600）：
-  //   TITLE: Chat Mood Meter Highlights
-  //   001  AX  V  C  00:00:00:00 00:00:05:00 00:00:00:00 00:00:05:00
-  return '';
+export function exportEDL(opts: ExportOptions): string {
+  const { highlights, snapshots = [], streamStartedAt, selectedHighlightIds } = opts;
+
+  const filteredHighlights = selectedHighlightIds
+    ? highlights.filter((_, i) => selectedHighlightIds.includes(i))
+    : highlights;
+
+  // 標題日期取自 streamStartedAt
+  const dateStr = new Date(streamStartedAt).toISOString().slice(0, 10);
+
+  const lines: string[] = [
+    `TITLE: Chat Mood Meter Highlights — ${dateStr}`,
+    'FCM: NON-DROP FRAME',
+    '',
+  ];
+
+  filteredHighlights.forEach((h, i) => {
+    const offsetSec = Math.max(0, (h.timestamp - streamStartedAt) / 1000);
+    const endSec = offsetSec + 30; // 預設 30 秒片段
+    const tcIn  = secToTimecode(offsetSec);
+    const tcOut = secToTimecode(endSec);
+    const eventNum = String(i + 1).padStart(3, '0');
+    const intensityPct = Math.round(h.intensity * 100);
+    const note = h.sampleMessages[0] ?? '';
+
+    lines.push(`${eventNum}  AX       V     C        ${tcIn} ${tcOut} ${tcIn} ${tcOut}`);
+    lines.push(`* HIGHLIGHT: ${h.emotion.toUpperCase()} ${intensityPct}%${note ? ` — ${note}` : ''}`);
+    lines.push('');
+  });
+
+  return lines.join('\n');
 }
 
 /**
  * exportChapters
  * 將高光時刻導出為 YouTube 章節標記格式。
- * TODO M6 實作
+ * 第一行固定為 00:00:00 Stream Start，後續按 offset 排序。
  */
-export function exportChapters(_opts: ExportOptions): string {
-  // TODO M6：實作 YouTube Chapters 導出
-  // 格式範例：
-  //   0:00 開場
-  //   1:23 炒熱時刻
-  //   5:10 好笑時刻
-  return '';
+export function exportChapters(opts: ExportOptions): string {
+  const { highlights, streamStartedAt, selectedHighlightIds } = opts;
+
+  const filteredHighlights = selectedHighlightIds
+    ? highlights.filter((_, i) => selectedHighlightIds.includes(i))
+    : highlights;
+
+  const lines: string[] = ['00:00:00 Stream Start'];
+
+  for (const h of filteredHighlights) {
+    const offsetSec = Math.max(0, (h.timestamp - streamStartedAt) / 1000);
+    const tc = secToChapterTime(offsetSec);
+    const emoji = EMOTION_EMOJI[h.emotion] ?? '🎬';
+    const intensityPct = Math.round(h.intensity * 100);
+    const note = h.sampleMessages[0] ?? '';
+    const desc = note ? `${note} (${intensityPct}%)` : `${intensityPct}%`;
+    lines.push(`${tc} ${emoji} ${h.emotion.toUpperCase()} — ${desc}`);
+  }
+
+  return lines.join('\n');
 }
 
 /**
  * exportSRT
  * 將高光時刻導出為 SRT 字幕格式。
- * TODO M6 實作
+ * 每個 highlight 一個字幕段落，duration 預設 30 秒。
  */
-export function exportSRT(_opts: ExportOptions): string {
-  // TODO M6：實作 SRT 字幕導出
-  // SRT 格式範例：
-  //   1
-  //   00:00:01,000 --> 00:00:05,000
-  //   [炒熱] 強度 85%
-  return '';
+export function exportSRT(opts: ExportOptions): string {
+  const { highlights, streamStartedAt, selectedHighlightIds } = opts;
+
+  const filteredHighlights = selectedHighlightIds
+    ? highlights.filter((_, i) => selectedHighlightIds.includes(i))
+    : highlights;
+
+  if (filteredHighlights.length === 0) return '';
+
+  const blocks: string[] = [];
+
+  filteredHighlights.forEach((h, i) => {
+    const offsetSec = Math.max(0, (h.timestamp - streamStartedAt) / 1000);
+    const endSec = offsetSec + 30;
+    const timeIn  = secToSRTTime(offsetSec);
+    const timeOut = secToSRTTime(endSec);
+    const emoji = EMOTION_EMOJI[h.emotion] ?? '🎬';
+    const intensityPct = Math.round(h.intensity * 100);
+    const note = h.sampleMessages[0] ?? '';
+
+    const block = [
+      String(i + 1),
+      `${timeIn} --> ${timeOut}`,
+      `${emoji} ${h.emotion.toUpperCase()} — ${intensityPct}% intensity`,
+      note,
+      '',
+    ].join('\n');
+
+    blocks.push(block);
+  });
+
+  return blocks.join('\n');
 }
 
 /**
@@ -536,4 +608,40 @@ function escapeHTML(str: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+/** 數字補零至 2 位 */
+function pad(n: number): string {
+  return String(n).padStart(2, '0');
+}
+
+/**
+ * 秒數轉 EDL timecode（HH:MM:SS:FF，固定 30fps，FF 固定 00）
+ */
+function secToTimecode(sec: number, _fps = 30): string {
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = Math.floor(sec % 60);
+  const f = 0;
+  return `${pad(h)}:${pad(m)}:${pad(s)}:${pad(f)}`;
+}
+
+/**
+ * 秒數轉 YouTube Chapters 時間格式（HH:MM:SS）
+ */
+function secToChapterTime(sec: number): string {
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = Math.floor(sec % 60);
+  return `${pad(h)}:${pad(m)}:${pad(s)}`;
+}
+
+/**
+ * 秒數轉 SRT 時間格式（HH:MM:SS,mmm）
+ */
+function secToSRTTime(sec: number): string {
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = Math.floor(sec % 60);
+  return `${pad(h)}:${pad(m)}:${pad(s)},000`;
 }
