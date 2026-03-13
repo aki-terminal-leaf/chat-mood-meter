@@ -17,9 +17,9 @@
   },
   "highlight": {
     "windowSec": 30,
-    "densityMultiplier": 2.5,
-    "intensityThreshold": 0.8,
-    "cooldownSec": 60
+    "densityMultiplier": 1.5,
+    "intensityThreshold": 0.6,
+    "cooldownSec": 30
   },
   "overlay": {
     "port": 9800,

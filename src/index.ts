@@ -51,7 +51,7 @@ async function main(): Promise<void> {
   await obsMarker.connect();
 
   // 4. 串接 Highlight 偵測（analyzer → detector → server + obs）
-  setupHighlight(analyzer, server, obsMarker, config);
+  const detector = setupHighlight(analyzer, server, obsMarker, config);
 
   // 5. 串接 Storage
   const storage = setupStorage(server, config);
@@ -60,6 +60,12 @@ async function main(): Promise<void> {
   analyzer.on('snapshot', (snapshot) => {
     server.pushSnapshot(snapshot);
     storage.saveSnapshot(snapshot);
+  });
+
+  // 6b. Highlight → storage 寫入
+  detector.on('highlight', (marker) => {
+    storage.saveHighlight(marker);
+    console.log(`[Highlight] 🎯 ${marker.emotion.toUpperCase()} ${(marker.intensity * 100).toFixed(0)}% @ ${new Date(marker.timestamp).toISOString()}`);
   });
 
   // 7. 啟動 Analyzer
