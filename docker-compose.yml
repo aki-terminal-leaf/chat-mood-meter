@@ -6,7 +6,7 @@ services:
     environment:
       POSTGRES_DB: chatmoodmeter
       POSTGRES_USER: cmm
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-cmm_dev_2026}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
     volumes:
       - pgdata:/var/lib/postgresql/data
     ports:
@@ -34,7 +34,7 @@ services:
     ports:
       - "${API_PORT:-3000}:3000"
     environment:
-      DATABASE_URL: postgresql://cmm:${DB_PASSWORD:-cmm_dev_2026}@postgres:5432/chatmoodmeter
+      DATABASE_URL: postgresql://cmm:${DB_PASSWORD}@postgres:5432/chatmoodmeter
       REDIS_URL: redis://redis:6379
       JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
       TWITCH_CLIENT_ID: ${TWITCH_CLIENT_ID}
@@ -52,7 +52,7 @@ services:
       context: .
       target: worker
     environment:
-      DATABASE_URL: postgresql://cmm:${DB_PASSWORD:-cmm_dev_2026}@postgres:5432/chatmoodmeter
+      DATABASE_URL: postgresql://cmm:${DB_PASSWORD}@postgres:5432/chatmoodmeter
       REDIS_URL: redis://redis:6379
     depends_on:
       postgres:

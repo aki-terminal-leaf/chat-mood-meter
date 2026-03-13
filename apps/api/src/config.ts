@@ -21,7 +21,7 @@ export function loadConfig(): Config {
     port: parseInt(process.env.PORT || '3000'),
     host: process.env.HOST || '0.0.0.0',
     database: {
-      url: process.env.DATABASE_URL || 'postgresql://cmm:cmm_dev_2026@localhost:5432/chatmoodmeter',
+      url: process.env.DATABASE_URL || '',
     },
     redis: {
       url: process.env.REDIS_URL || 'redis://localhost:6379',

@@ -10,9 +10,7 @@ import type { ChannelJob } from './queue.js';
 /** 從環境變數讀取 Worker 設定，未設定時回傳開發用預設值 */
 export function loadWorkerConfig() {
   return {
-    databaseUrl:
-      process.env.DATABASE_URL ??
-      'postgresql://cmm:cmm_dev_2026@localhost:5432/chatmoodmeter',
+    databaseUrl: process.env.DATABASE_URL ?? '',
     redisUrl: process.env.REDIS_URL ?? 'redis://localhost:6379',
   };
 }

@@ -110,7 +110,7 @@ describe('loadWorkerConfig()', () => {
     const config = loadWorkerConfig();
 
     expect(config.databaseUrl).toBe(
-      'postgresql://cmm:cmm_dev_2026@localhost:5432/chatmoodmeter',
+      '',
     );
     expect(config.redisUrl).toBe('redis://localhost:6379');
   });

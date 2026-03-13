@@ -1,4 +1,9 @@
 import { defineConfig } from 'vitest/config';
+import { config } from 'dotenv';
+import { resolve } from 'node:path';
+
+// 從 monorepo 根目錄載入 .env
+config({ path: resolve(__dirname, '../../.env') });
 
 export default defineConfig({
   test: {

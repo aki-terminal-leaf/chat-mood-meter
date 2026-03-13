@@ -4,7 +4,7 @@
  * 使用：
  *   - Fastify .inject() 模擬 HTTP 請求
  *   - vi.fn() mock global.fetch（外部 API）
- *   - 真實 PostgreSQL 連線（postgresql://cmm:cmm_dev_2026@localhost:5432/chatmoodmeter）
+ *   - 真實 PostgreSQL 連線（postgresql://cmm:<env>@localhost:5432/chatmoodmeter）
  *   - 測試前清空 users / channels 表
  */
 
@@ -20,7 +20,7 @@ import { decrypt } from '../src/auth/crypto.js';
 
 // ── 測試環境常數 ──────────────────────────────────────────────────────────────
 
-const DB_URL         = 'postgresql://cmm:cmm_dev_2026@localhost:5432/chatmoodmeter';
+const DB_URL = process.env.DATABASE_URL!;
 const ENCRYPTION_KEY = 'test-encryption-key-for-testing!!';
 const JWT_SECRET     = 'test-jwt-secret-at-least-32-chars!!';
 
