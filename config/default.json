@@ -1,0 +1,37 @@
+{
+  "platforms": {
+    "twitch": {
+      "enabled": true,
+      "channel": "",
+      "token": ""
+    },
+    "youtube": {
+      "enabled": false,
+      "liveChatId": "",
+      "apiKey": ""
+    }
+  },
+  "analyzer": {
+    "mode": "rules",
+    "snapshotIntervalMs": 1000
+  },
+  "highlight": {
+    "windowSec": 30,
+    "densityMultiplier": 2.5,
+    "intensityThreshold": 0.8,
+    "cooldownSec": 60
+  },
+  "overlay": {
+    "port": 9800,
+    "historyMinutes": 5
+  },
+  "obs": {
+    "enabled": false,
+    "host": "localhost",
+    "port": 4455,
+    "password": ""
+  },
+  "storage": {
+    "dbPath": "./data/sessions.db"
+  }
+}
