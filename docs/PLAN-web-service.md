@@ -1,515 +1,1058 @@
-# Web Service 版本計畫
+# Chat Mood Meter — Web Service 完整開發計畫
 
-> 目標：讓使用者不需要在本機跑程式，直接透過網頁綁定 Twitch / YouTube 帳號，自動分析聊天情緒，並下載高光時間點檔案。
+> 將 CLI 工具轉型為 Web Service，使用者透過網頁綁定 Twitch / YouTube 帳號，自動分析直播聊天情緒，下載高光時間點檔案。
 
-## 使用者故事
+---
 
-1. 使用者開啟網站，用 Twitch 或 YouTube 帳號登入
-2. 系統自動偵測該帳號正在直播 → 開始收集聊天訊息 + 情緒分析
-3. 直播中：使用者可即時查看情緒儀表板
-4. 直播結束：使用者可瀏覽歷史場次、查看高光時間點
-5. 使用者下載高光檔案（JSON / CSV / EDL / 章節標記），匯入剪輯軟體
+## 目錄
 
-## 架構
+1. [產品概述](#1-產品概述)
+2. [系統架構](#2-系統架構)
+3. [技術選型](#3-技術選型)
+4. [資料庫設計](#4-資料庫設計)
+5. [核心模組詳細設計](#5-核心模組詳細設計)
+6. [API 設計](#6-api-設計)
+7. [前端頁面設計](#7-前端頁面設計)
+8. [高光導出格式](#8-高光導出格式)
+9. [部署架構](#9-部署架構)
+10. [容量評估](#10-容量評估)
+11. [開發里程碑](#11-開發里程碑)
+12. [風險與對策](#12-風險與對策)
 
-```
-┌─────────────────────────────────────────────────┐
-│                   Frontend (SPA)                │
-│  Landing → OAuth Login → Dashboard → Export     │
-└──────────────────────┬──────────────────────────┘
-                       │ REST + WebSocket
-┌──────────────────────▼──────────────────────────┐
-│                  API Server                      │
-│  Auth · Session Manager · Export API             │
-└──┬───────────────┬───────────────┬──────────────┘
-   │               │               │
-┌──▼──┐     ┌──────▼──────┐   ┌───▼────┐
-│Queue│     │  Workers     │   │  DB    │
-│Redis│     │  per-channel │   │Postgres│
-└──┬──┘     │  collector   │   └────────┘
-   │        │  + analyzer  │
-   │        └──────────────┘
-   │
-┌──▼──────────────────────┐
-│  Twitch IRC / EventSub  │
-│  YouTube Live Chat API  │
-└─────────────────────────┘
-```
+---
 
-## Phase 1：核心 Web Service
+## 1. 產品概述
 
-### P1-1 — Auth 系統
-- **Twitch OAuth 2.0**
-  - Scope: `user:read:email`, `chat:read`
-  - 取得 user profile + access token
-  - EventSub 訂閱 stream.online / stream.offline
-- **YouTube OAuth 2.0**
-  - Scope: `youtube.readonly`
-  - 取得 channel info + live chat ID
-  - Polling liveBroadcasts API 偵測開台
-- **Session 管理**
-  - JWT access token（15min）+ refresh token（7d）
-  - Cookie httpOnly + secure
-
-### P1-2 — 多租戶 Worker 架構
-
-#### 核心問題
-
-一台 server 要同時幫 N 個使用者分析 N 個不同的直播頻道。每個頻道都需要：
-- 一條持續的 IRC / Chat 連線（收訊息）
-- 一個 Analyzer 實例（算情緒）
-- 一個 HighlightDetector 實例（抓高光）
-- 定期寫 DB
-
-這些都是有狀態的長時間運作，不適合用 stateless HTTP request 處理。
-
-#### 架構：Worker Pool + Job Queue
+### 使用者流程
 
 ```
-                    ┌─────────────┐
-                    │  Trigger    │  ← Twitch EventSub / YouTube polling / 手動
-                    │  Service    │
-                    └──────┬──────┘
-                           │ enqueue job
-                    ┌──────▼──────┐
-                    │   Redis     │  ← BullMQ job queue
-                    │   Queue     │
-                    └──────┬──────┘
-                           │ dequeue
-              ┌────────────┼────────────┐
-              │            │            │
-         ┌────▼────┐  ┌───▼─────┐  ┌───▼─────┐
-         │Worker 1 │  │Worker 2 │  │Worker 3 │  ← Worker Pool（可水平擴展）
-         │ch: xqc  │  │ch: poki │  │ch: caed │
-         └────┬────┘  └────┬────┘  └────┬────┘
-              │            │            │
-              ▼            ▼            ▼
-         Twitch IRC   Twitch IRC   YouTube Chat
-         Analyzer     Analyzer     Analyzer
-         Highlight    Highlight    Highlight
-              │            │            │
-              └────────────┼────────────┘
-                           │ write
-                    ┌──────▼──────┐
-                    │ PostgreSQL  │
-                    └─────────────┘
+1. 開啟網站 → 看到 Landing Page（產品介紹）
+2. 點擊「Login with Twitch」或「Login with YouTube」
+3. OAuth 授權 → 自動綁定帳號
+4. 系統偵測到開台 → 自動開始收集聊天 + 情緒分析
+5. 直播中 → 使用者可即時查看情緒儀表板
+6. 直播結束 → 自動產生場次報告
+7. 使用者瀏覽歷史場次 → 查看高光時間點
+8. 下載高光檔案 → 匯入剪輯軟體（Premiere / DaVinci / YouTube 描述）
 ```
 
-#### Worker 生命週期
+### 核心價值
+
+- **零安裝** — 不用裝軟體，瀏覽器直接用
+- **自動化** — 開台自動分析，關台自動產生報告
+- **多格式導出** — 一鍵匯出到各種剪輯軟體
+- **即時可視化** — 直播中就能看到情緒波形
+
+---
+
+## 2. 系統架構
 
 ```
-1. CREATED
-   Trigger Service 偵測到使用者的頻道開台
-   → 建立 job: { userId, channelId, platform, channelName }
-   → 推入 Redis queue
-
-2. STARTING
-   Worker Pool 中一個空閒 worker 認領 job
-   → 建立 Collector（Twitch IRC 或 YouTube Chat）
-   → 建立 Analyzer + HighlightDetector
-   → 建立 DB session 記錄
-   → 連線到目標頻道
-
-3. RUNNING
-   持續運作，每秒：
-   - Collector 收到 ChatMessage → feed 給 Analyzer
-   - Analyzer emit snapshot → 寫 DB + 推 WebSocket（給前端即時顯示）
-   - HighlightDetector 偵測到高光 → 寫 DB + 推通知
-
-4. STOPPING
-   觸發條件（任一）：
-   - Twitch EventSub 收到 stream.offline
-   - YouTube API 回報直播結束
-   - 使用者手動停止
-   - 連線斷開超過重連上限
-   - Server 收到 shutdown signal
-
-   → 停止 Collector
-   → 等待最後一批 snapshot 寫入
-   → 結束 DB session（endSession）
-   → 產生場次摘要
-   → 釋放 worker 資源
-
-5. COMPLETED
-   Worker 回到 idle pool，等待下一個 job
+┌─────────────────────────────────────────────────────────┐
+│                     Frontend (React SPA)                │
+│                                                         │
+│  Landing ─→ OAuth Login ─→ Dashboard ─→ Export          │
+│                              │                          │
+│                        WebSocket (即時)                  │
+└─────────────────────────┬───────────────────────────────┘
+                          │ HTTPS + WSS
+┌─────────────────────────▼───────────────────────────────┐
+│                    API Server (Fastify)                  │
+│                                                         │
+│  Auth ─ Sessions ─ Channels ─ Export ─ WebSocket Hub    │
+└───┬─────────────┬──────────────────┬────────────────────┘
+    │             │                  │
+┌───▼───┐   ┌────▼────┐      ┌──────▼──────┐
+│ Redis │   │ Trigger │      │ PostgreSQL  │
+│       │   │ Service │      │             │
+│ Queue │   │         │      │ users       │
+│ PubSub│   │ EventSub│      │ channels    │
+│ Cache │   │ Polling │      │ sessions    │
+└───┬───┘   └────┬────┘      │ snapshots   │
+    │            │           │ highlights  │
+┌───▼────────────▼───┐       └─────────────┘
+│   Worker Pool      │
+│                    │
+│  ┌──────┐ ┌──────┐│
+│  │ W-1  │ │ W-2  ││  ← 每個 Worker = Collector + Analyzer + Detector
+│  │twitch│ │  yt  ││
+│  └──────┘ └──────┘│
+│  ┌──────┐ ┌──────┐│
+│  │ W-3  │ │ ...  ││
+│  │twitch│ │      ││
+│  └──────┘ └──────┘│
+└────────────────────┘
 ```
 
-#### Worker 內部結構（單一 worker）
+### 元件職責
 
-```typescript
-interface ChannelWorker {
-  // 識別
-  jobId: string;
-  userId: string;
-  channelId: string;
-  platform: 'twitch' | 'youtube';
-  status: 'starting' | 'running' | 'stopping' | 'error';
+| 元件 | 職責 |
+|------|------|
+| **API Server** | HTTP API、WebSocket Hub、認證、靜態檔案 |
+| **Trigger Service** | 監聽開台/關台事件，派發 worker job |
+| **Worker Pool** | 管理多個 channel worker 的生命週期 |
+| **Channel Worker** | 單一頻道的聊天收集 + 情緒分析 + 高光偵測 |
+| **Redis** | Job queue（BullMQ）、Pub/Sub（即時推送）、快取 |
+| **PostgreSQL** | 持久化儲存所有資料 |
 
-  // 核心元件（複用現有模組）
-  collector: TwitchCollector | YouTubeCollector;
-  analyzer: RulesAnalyzer | LLMAnalyzer;
-  detector: HighlightDetector;
+---
 
-  // 狀態
-  sessionId: string;          // DB session UUID
-  startedAt: Date;
-  messageCount: number;
-  highlightCount: number;
-  lastSnapshotAt: number;
+## 3. 技術選型
 
-  // 方法
-  start(): Promise<void>;
-  stop(reason: string): Promise<void>;
-  getStatus(): WorkerStatus;
-}
-```
+| 項目 | 選擇 | 原因 |
+|------|------|------|
+| 語言 | TypeScript | 前後端統一，複用現有核心 |
+| 後端框架 | Fastify | 高效能、原生 TS、Schema 驗證 |
+| 前端 | React 19 + Vite | SPA、Chart.js 整合、生態成熟 |
+| 資料庫 | PostgreSQL 16 | JSONB、效能、可靠性 |
+| ORM | Drizzle ORM | 型別安全、輕量、SQL-like |
+| 快取/佇列 | Redis 7 + BullMQ | Worker 排程、Pub/Sub、session 快取 |
+| 認證 | 自建 OAuth 2.0 client | Twitch/YouTube 各自的 OAuth flow |
+| Token | JWT（access）+ DB（refresh） | 無狀態 API + 安全刷新 |
+| Monorepo | Turborepo | 共享核心模組、統一 build |
+| 部署 | Docker Compose | 一鍵啟動所有服務 |
+| 反向代理 | Caddy | 自動 HTTPS、WebSocket proxy |
 
-#### Worker Pool 管理
+---
 
-```typescript
-class WorkerPool {
-  private workers: Map<string, ChannelWorker>;  // jobId → worker
-  private maxConcurrent: number;                 // 單台 server 最大同時 worker 數
+## 4. 資料庫設計
 
-  // 資源管理
-  // 每個 worker 大約消耗：
-  //   - 1 條 TCP 連線（Twitch IRC）
-  //   - ~20MB RAM（Analyzer 滑動視窗 + 緩衝區）
-  //   - 極少 CPU（規則引擎很輕量）
-  //
-  // 一台 4GB VPS 大約能跑 100-150 個 worker 同時
-  // 瓶頸在 TCP 連線數和 DB 寫入 throughput
-
-  async spawn(job: ChannelJob): Promise<void> {
-    if (this.workers.size >= this.maxConcurrent) {
-      throw new Error('Worker pool full');
-    }
-    const worker = new ChannelWorker(job);
-    this.workers.set(job.id, worker);
-    await worker.start();
-  }
-
-  async kill(jobId: string, reason: string): Promise<void> {
-    const worker = this.workers.get(jobId);
-    if (worker) {
-      await worker.stop(reason);
-      this.workers.delete(jobId);
-    }
-  }
-
-  // 健康檢查：定期檢查每個 worker 是否還活著
-  healthCheck(): void {
-    for (const [id, worker] of this.workers) {
-      if (worker.status === 'error') {
-        this.kill(id, 'health check failed');
-      }
-    }
-  }
-}
-```
-
-#### DB 寫入策略（高 throughput）
+### ER 圖
 
 ```
-問題：100 個 worker × 每秒 1 筆 snapshot = 100 writes/sec
-     加上 chat messages 可能更多
-
-解法：批次寫入
+users ──< channels ──< sessions ──< snapshots
+                            │
+                            └──< highlights
 ```
 
-```typescript
-class BatchWriter {
-  private buffer: Snapshot[] = [];
-  private flushInterval = 5000;  // 每 5 秒 flush 一次
+### Schema
 
-  add(snapshot: Snapshot): void {
-    this.buffer.push(snapshot);
-  }
-
-  // 定期批次寫入（一次 INSERT 100 筆比 100 次 INSERT 1 筆快 50 倍）
-  async flush(): Promise<void> {
-    if (this.buffer.length === 0) return;
-    const batch = this.buffer.splice(0);
-
-    // PostgreSQL COPY 或 multi-row INSERT
-    await db.query(`
-      INSERT INTO snapshots (session_id, timestamp, dominant, scores, intensity, msg_count)
-      VALUES ${batch.map(s => `(${s.sessionId}, ${s.timestamp}, ...)`).join(',')}
-    `);
-  }
-}
-```
-
-#### 即時推送（WebSocket fanout）
-
-```
-使用者開啟 Dashboard 的即時監控頁面時：
-
-1. 前端建立 WebSocket 連線到 API server
-2. 告訴 server：「我要看 channel X 的即時資料」
-3. Server 訂閱該 channel 的 worker 推送
-4. Worker 每秒 emit snapshot → Redis Pub/Sub → API server → WebSocket → 前端
-
-用 Redis Pub/Sub 是因為：
-- API server 可能有多台（load balancer 後面）
-- Worker 和 API server 可能不在同一台機器
-- Pub/Sub 天然支援 fanout（多個前端訂閱同一頻道）
-```
-
-```
-Worker ──publish──▶ Redis channel: "live:xqc"
-                          │
-                    ┌─────┼─────┐
-                    ▼     ▼     ▼
-                  API-1  API-2  API-3
-                    │     │     │
-                    ▼     ▼     ▼
-                  WS-1  WS-2  WS-3  ← 各自連線的前端使用者
-```
-
-#### 錯誤處理與容錯
-
-| 情境 | 處理方式 |
-|------|----------|
-| Twitch IRC 斷線 | 指數退避重連（複用現有邏輯），3 次失敗後標記 error |
-| YouTube API quota 耗盡 | 暫停該 worker，等到隔天 quota 重置 |
-| Worker crash | WorkerPool healthCheck 偵測 → 重新排 job |
-| DB 寫入失敗 | BatchWriter 保留 buffer，retry 3 次，持續失敗則暫存到 Redis |
-| Server 重啟 | Redis queue 裡的 job 不會丟失，重啟後自動 re-consume |
-| 使用者刪帳號 | Trigger Service 發 kill signal → worker 優雅關閉 → 清除資料 |
-
-#### 擴展策略
-
-```
-階段 1（0-100 使用者）：
-  單台 VPS，API + Worker + Redis + PG 全在一起
-  Docker Compose 部署
-
-階段 2（100-1000 使用者）：
-  分離：API server × 2 + Worker server × 2 + Redis + PG
-  Worker server 專門跑 collector + analyzer
-
-階段 3（1000+ 使用者）：
-  Kubernetes，Worker 用 HPA 自動擴展
-  PG 用 read replica
-  Redis Cluster
-  snapshot 資料考慮 TimescaleDB
-```
-
-### P1-3 — 資料庫（PostgreSQL）
 ```sql
+-- ═══════════════════════════════════════
 -- 使用者
+-- ═══════════════════════════════════════
 CREATE TABLE users (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  provider    TEXT NOT NULL,        -- 'twitch' | 'youtube'
-  provider_id TEXT NOT NULL,        -- 平台 user ID
-  username    TEXT,
-  email       TEXT,
-  avatar_url  TEXT,
-  access_token TEXT,                -- 加密儲存
-  refresh_token TEXT,
-  token_expires_at TIMESTAMPTZ,
-  plan        TEXT DEFAULT 'free',  -- 'free' | 'pro'
-  created_at  TIMESTAMPTZ DEFAULT now(),
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  provider        TEXT NOT NULL,              -- 'twitch' | 'youtube'
+  provider_id     TEXT NOT NULL,              -- 平台 user ID
+  username        TEXT NOT NULL,
+  display_name    TEXT,
+  email           TEXT,
+  avatar_url      TEXT,
+  access_token    TEXT NOT NULL,              -- 加密儲存（AES-256-GCM）
+  refresh_token   TEXT,
+  token_expires   TIMESTAMPTZ,
+  created_at      TIMESTAMPTZ DEFAULT now(),
+  updated_at      TIMESTAMPTZ DEFAULT now(),
   UNIQUE (provider, provider_id)
 );
 
--- 連結的頻道
+-- ═══════════════════════════════════════
+-- 綁定的頻道
+-- ═══════════════════════════════════════
 CREATE TABLE channels (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id     UUID REFERENCES users(id),
-  platform    TEXT NOT NULL,
-  channel_id  TEXT NOT NULL,
-  channel_name TEXT,
-  enabled     BOOLEAN DEFAULT true,
-  created_at  TIMESTAMPTZ DEFAULT now()
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  platform        TEXT NOT NULL,              -- 'twitch' | 'youtube'
+  channel_id      TEXT NOT NULL,              -- 平台 channel/room ID
+  channel_name    TEXT NOT NULL,
+  enabled         BOOLEAN DEFAULT true,
+  auto_start      BOOLEAN DEFAULT true,       -- 開台自動分析
+  analyzer_mode   TEXT DEFAULT 'rules',       -- 'rules' | 'llm'
+  created_at      TIMESTAMPTZ DEFAULT now(),
+  UNIQUE (user_id, platform, channel_id)
 );
 
+-- ═══════════════════════════════════════
 -- 直播場次
+-- ═══════════════════════════════════════
 CREATE TABLE sessions (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  channel_id  UUID REFERENCES channels(id),
-  started_at  TIMESTAMPTZ NOT NULL,
-  ended_at    TIMESTAMPTZ,
-  total_messages INTEGER DEFAULT 0,
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  channel_id      UUID NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
+  status          TEXT DEFAULT 'live',        -- 'live' | 'ended' | 'error'
+  started_at      TIMESTAMPTZ NOT NULL,
+  ended_at        TIMESTAMPTZ,
+  total_messages  INTEGER DEFAULT 0,
   total_highlights INTEGER DEFAULT 0,
-  metadata    JSONB DEFAULT '{}'
+  peak_intensity  REAL DEFAULT 0,
+  peak_msg_rate   INTEGER DEFAULT 0,
+  dominant_emotion TEXT,
+  stream_title    TEXT,                       -- 從平台 API 取得
+  metadata        JSONB DEFAULT '{}',
+  created_at      TIMESTAMPTZ DEFAULT now()
 );
 
--- 情緒快照（逐秒，大量資料）
+-- ═══════════════════════════════════════
+-- 情緒快照（每秒一筆，量最大）
+-- ═══════════════════════════════════════
 CREATE TABLE snapshots (
-  id          BIGSERIAL PRIMARY KEY,
-  session_id  UUID REFERENCES sessions(id),
-  timestamp   TIMESTAMPTZ NOT NULL,
-  dominant    TEXT NOT NULL,
-  scores      JSONB NOT NULL,       -- {hype, funny, sad, angry}
-  intensity   REAL,
-  msg_count   INTEGER
+  id              BIGSERIAL PRIMARY KEY,
+  session_id      UUID NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  ts              TIMESTAMPTZ NOT NULL,
+  dominant        TEXT NOT NULL,
+  hype            REAL DEFAULT 0,
+  funny           REAL DEFAULT 0,
+  sad             REAL DEFAULT 0,
+  angry           REAL DEFAULT 0,
+  intensity       REAL DEFAULT 0,
+  msg_count       INTEGER DEFAULT 0
 );
 
+-- ═══════════════════════════════════════
 -- 高光標記
+-- ═══════════════════════════════════════
 CREATE TABLE highlights (
-  id          BIGSERIAL PRIMARY KEY,
-  session_id  UUID REFERENCES sessions(id),
-  timestamp   TIMESTAMPTZ NOT NULL,
-  emotion     TEXT NOT NULL,
-  intensity   REAL,
-  duration_ms INTEGER,
-  samples     JSONB                 -- 代表性訊息
+  id              BIGSERIAL PRIMARY KEY,
+  session_id      UUID NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  ts              TIMESTAMPTZ NOT NULL,
+  emotion         TEXT NOT NULL,
+  intensity       REAL NOT NULL,
+  duration_ms     INTEGER,
+  offset_sec      INTEGER,                    -- 從直播開始的秒數（方便導出）
+  samples         JSONB,                      -- 代表性訊息
+  created_at      TIMESTAMPTZ DEFAULT now()
 );
 
+-- ═══════════════════════════════════════
 -- 索引
-CREATE INDEX idx_snapshots_session ON snapshots(session_id, timestamp);
-CREATE INDEX idx_highlights_session ON highlights(session_id, timestamp);
+-- ═══════════════════════════════════════
+CREATE INDEX idx_channels_user ON channels(user_id);
+CREATE INDEX idx_sessions_channel ON sessions(channel_id, started_at DESC);
+CREATE INDEX idx_snapshots_session ON snapshots(session_id, ts);
+CREATE INDEX idx_highlights_session ON highlights(session_id, ts);
+CREATE INDEX idx_users_provider ON users(provider, provider_id);
 ```
 
-### P1-4 — 高光導出格式
-
-| 格式 | 用途 | 說明 |
-|------|------|------|
-| **JSON** | 通用 | 完整結構化資料 |
-| **CSV** | Excel / Google Sheets | 時間戳 + 情緒 + 強度 |
-| **EDL** (Edit Decision List) | Premiere / DaVinci | 業界標準剪輯標記 |
-| **Chapter Markers** | YouTube | `00:05:23 🔥 HYPE 92%` 格式，直接貼影片描述 |
-| **SRT** | 字幕軟體 | 高光時段以字幕形式顯示 |
-| **Markers.xml** | OBS | OBS 章節標記匯入 |
+### 資料量估算
 
 ```
-// YouTube 章節格式範例
+每場直播（3 小時）：
+  snapshots: 3 × 3600 = 10,800 筆
+  highlights: ~10-30 筆
+
+100 位活躍使用者 × 每週 3 場：
+  snapshots: 100 × 3 × 10,800 = 3.24M 筆/週 ≈ 14M 筆/月
+  highlights: 100 × 3 × 20 = 6,000 筆/週
+
+每筆 snapshot ~100 bytes → 14M × 100B ≈ 1.4GB/月
+每筆 highlight ~500 bytes → 6K × 500B ≈ 3MB/月
+
+→ 需要定期清理舊資料（保留 90 天）或分區
+```
+
+---
+
+## 5. 核心模組詳細設計
+
+### 5.1 Auth 模組
+
+```
+POST /auth/twitch          → 重定向到 Twitch OAuth
+GET  /auth/twitch/callback → 處理 callback、建立/更新 user、發 JWT
+POST /auth/youtube         → 重定向到 YouTube OAuth
+GET  /auth/youtube/callback→ 同上
+POST /auth/refresh         → 用 refresh token 換新 access token
+POST /auth/logout          → 清除 session
+```
+
+**Twitch OAuth Flow：**
+```
+1. 前端 → /auth/twitch
+2. Server 重定向 → https://id.twitch.tv/oauth2/authorize?
+     client_id=...&redirect_uri=.../callback&scope=user:read:email+chat:read
+3. 使用者授權
+4. Twitch 重定向 → /auth/twitch/callback?code=...
+5. Server 用 code 換 access_token + refresh_token
+6. 取 user profile（GET https://api.twitch.tv/helix/users）
+7. Upsert users table
+8. 自動建立 channel（用使用者自己的頻道）
+9. 發 JWT → 回前端
+```
+
+**YouTube OAuth Flow：**
+```
+1. 前端 → /auth/youtube
+2. Server 重定向 → https://accounts.google.com/o/oauth2/v2/auth?
+     scope=https://www.googleapis.com/auth/youtube.readonly
+3. 使用者授權
+4. Google 重定向 → /auth/youtube/callback?code=...
+5. Server 用 code 換 token
+6. 取 channel info（GET youtube/v3/channels?mine=true）
+7. Upsert users + channels
+8. 發 JWT
+```
+
+### 5.2 Trigger Service
+
+負責偵測使用者的直播狀態，在開台/關台時通知 Worker Pool。
+
+**Twitch — EventSub（Webhook 模式）：**
+```
+使用者綁定帳號時：
+  → 呼叫 Twitch API 建立 EventSub subscription
+  → 訂閱事件：stream.online / stream.offline
+  → Webhook URL: https://api.example.com/webhooks/twitch
+
+Twitch 會主動 POST 到我們的 webhook：
+  stream.online  → enqueue start-worker job
+  stream.offline → enqueue stop-worker job
+```
+
+**YouTube — Polling 模式：**
+```
+背景 cron job（每 60 秒）：
+  → 查詢所有 enabled 的 YouTube channels
+  → GET youtube/v3/liveBroadcasts?broadcastStatus=active&mine=true
+  → 有新直播 → enqueue start-worker job
+  → 直播消失 → enqueue stop-worker job
+
+Quota 管理：
+  liveBroadcasts.list = 100 units/call
+  每 60 秒 poll N 個使用者（batch query）
+  100 users × 1 call/min × 100 units = 10,000 units/100 min
+  → 一天 144,000 units，超出 10,000/day 免費額度
+  → 解法：batch query（一次 API call 查多人）+ 動態頻率
+  → 或用 YouTube Pub/Sub Hubbub（免費推送）
+```
+
+### 5.3 Worker Pool
+
+```typescript
+// ── Worker Pool 主程式 ─────────────────────────
+
+import { Worker as BullWorker, Queue } from 'bullmq';
+
+const channelQueue = new Queue('channel-workers', { connection: redis });
+
+// BullMQ Worker：從 queue 認領 job 並執行
+const bullWorker = new BullWorker('channel-workers', async (job) => {
+  const { action, channelId, platform, channelName, userId } = job.data;
+
+  if (action === 'start') {
+    await workerPool.spawn({
+      jobId: job.id,
+      channelId,
+      platform,
+      channelName,
+      userId,
+    });
+
+    // 這個 job 會一直「運行」到頻道關台
+    // 用 BullMQ 的 long-running job 模式
+    return new Promise((resolve) => {
+      workerPool.onWorkerDone(job.id, resolve);
+    });
+
+  } else if (action === 'stop') {
+    await workerPool.kill(channelId, 'stream offline');
+  }
+}, { connection: redis, concurrency: 150 });
+```
+
+### 5.4 Channel Worker（單一頻道）
+
+```typescript
+class ChannelWorker {
+  private collector: TwitchCollector | YouTubeCollector;
+  private analyzer: RulesAnalyzer;
+  private detector: HighlightDetector;
+  private batchWriter: BatchWriter;
+  private sessionId: string;
+  private streamStartedAt: Date;
+
+  constructor(private config: WorkerConfig) {}
+
+  async start(): Promise<void> {
+    // 1. 建立 DB session
+    this.sessionId = await db.createSession(this.config.channelId);
+    this.streamStartedAt = new Date();
+
+    // 2. 初始化核心元件（複用現有模組）
+    this.collector = this.config.platform === 'twitch'
+      ? new TwitchCollector({ channel: this.config.channelName })
+      : new YouTubeCollector({ liveChatId: this.config.liveChatId });
+
+    this.analyzer = new RulesAnalyzer({ snapshotIntervalMs: 1000 });
+    this.detector = new HighlightDetector(defaultHighlightConfig);
+    this.batchWriter = new BatchWriter(this.sessionId);
+
+    // 3. 接線
+    this.collector.on('message', (msg) => this.analyzer.feed(msg));
+
+    this.analyzer.on('snapshot', (snap) => {
+      this.batchWriter.addSnapshot(snap);
+      // Pub/Sub 推送給訂閱的前端
+      redis.publish(`live:${this.config.channelId}`, JSON.stringify({
+        type: 'snapshot', data: snap
+      }));
+    });
+
+    this.detector.on('highlight', (marker) => {
+      // 計算 offset（從直播開始的秒數）
+      marker.offsetSec = Math.floor((marker.timestamp - this.streamStartedAt.getTime()) / 1000);
+      this.batchWriter.addHighlight(marker);
+      redis.publish(`live:${this.config.channelId}`, JSON.stringify({
+        type: 'highlight', data: marker
+      }));
+    });
+
+    this.analyzer.on('snapshot', (snap) => this.detector.feed(snap));
+
+    // 4. 啟動
+    this.analyzer.start();
+    await this.collector.start();
+  }
+
+  async stop(reason: string): Promise<void> {
+    this.analyzer.stop();
+    await this.collector.stop();
+    await this.batchWriter.flush();
+    await db.endSession(this.sessionId);
+    console.log(`[Worker] ${this.config.channelName} stopped: ${reason}`);
+  }
+}
+```
+
+### 5.5 BatchWriter（批次寫入）
+
+```typescript
+class BatchWriter {
+  private snapshotBuffer: Snapshot[] = [];
+  private highlightBuffer: Highlight[] = [];
+  private timer: NodeJS.Timeout;
+
+  constructor(private sessionId: string) {
+    // 每 5 秒自動 flush
+    this.timer = setInterval(() => this.flush(), 5000);
+  }
+
+  addSnapshot(snap: Snapshot): void {
+    this.snapshotBuffer.push(snap);
+  }
+
+  addHighlight(h: Highlight): void {
+    this.highlightBuffer.push(h);
+  }
+
+  async flush(): Promise<void> {
+    // 原子取走 buffer
+    const snaps = this.snapshotBuffer.splice(0);
+    const highlights = this.highlightBuffer.splice(0);
+
+    if (snaps.length > 0) {
+      // Multi-row INSERT（一次寫 5 筆比 5 次寫 1 筆快很多）
+      await db.batchInsertSnapshots(this.sessionId, snaps);
+    }
+
+    if (highlights.length > 0) {
+      await db.batchInsertHighlights(this.sessionId, highlights);
+    }
+  }
+
+  async destroy(): Promise<void> {
+    clearInterval(this.timer);
+    await this.flush();
+  }
+}
+```
+
+### 5.6 WebSocket Hub（即時推送）
+
+```typescript
+// API Server 端
+
+import { Redis } from 'ioredis';
+
+const sub = new Redis();  // 訂閱用
+const wsClients = new Map<string, Set<WebSocket>>();  // channelId → WS clients
+
+// 使用者連線時
+fastify.get('/ws/live/:channelId', { websocket: true }, (ws, req) => {
+  const { channelId } = req.params;
+
+  if (!wsClients.has(channelId)) {
+    wsClients.set(channelId, new Set());
+    sub.subscribe(`live:${channelId}`);  // 首位訂閱者才訂閱 Redis
+  }
+  wsClients.get(channelId).add(ws);
+
+  ws.on('close', () => {
+    wsClients.get(channelId)?.delete(ws);
+    if (wsClients.get(channelId)?.size === 0) {
+      wsClients.delete(channelId);
+      sub.unsubscribe(`live:${channelId}`);
+    }
+  });
+});
+
+// Redis 收到推送 → 轉發給所有 WS client
+sub.on('message', (channel, message) => {
+  const channelId = channel.replace('live:', '');
+  const clients = wsClients.get(channelId);
+  if (!clients) return;
+  for (const ws of clients) {
+    if (ws.readyState === 1) ws.send(message);
+  }
+});
+```
+
+---
+
+## 6. API 設計
+
+### Auth
+
+| Method | Path | 說明 |
+|--------|------|------|
+| GET | `/auth/twitch` | 開始 Twitch OAuth |
+| GET | `/auth/twitch/callback` | Twitch OAuth callback |
+| GET | `/auth/youtube` | 開始 YouTube OAuth |
+| GET | `/auth/youtube/callback` | YouTube OAuth callback |
+| POST | `/auth/refresh` | 刷新 JWT |
+| POST | `/auth/logout` | 登出 |
+
+### User
+
+| Method | Path | 說明 |
+|--------|------|------|
+| GET | `/api/me` | 取得當前使用者資訊 |
+| DELETE | `/api/me` | 刪除帳號 + 所有資料 |
+
+### Channels
+
+| Method | Path | 說明 |
+|--------|------|------|
+| GET | `/api/channels` | 列出綁定的頻道 |
+| POST | `/api/channels` | 新增頻道 |
+| PATCH | `/api/channels/:id` | 更新頻道設定 |
+| DELETE | `/api/channels/:id` | 移除頻道 |
+
+### Sessions
+
+| Method | Path | 說明 |
+|--------|------|------|
+| GET | `/api/sessions` | 列出場次（分頁、篩選） |
+| GET | `/api/sessions/:id` | 場次詳情 |
+| GET | `/api/sessions/:id/snapshots` | 快照資料（支援 ?from=&to=） |
+| GET | `/api/sessions/:id/highlights` | 高光列表 |
+| DELETE | `/api/sessions/:id` | 刪除場次 |
+
+### Export
+
+| Method | Path | 說明 |
+|--------|------|------|
+| GET | `/api/sessions/:id/export/json` | JSON 完整資料 |
+| GET | `/api/sessions/:id/export/csv` | CSV 快照 |
+| GET | `/api/sessions/:id/export/edl` | EDL 剪輯標記 |
+| GET | `/api/sessions/:id/export/chapters` | YouTube 章節 |
+| GET | `/api/sessions/:id/export/srt` | SRT 字幕 |
+| GET | `/api/sessions/:id/export/html` | HTML 獨立報告 |
+
+### Webhooks
+
+| Method | Path | 說明 |
+|--------|------|------|
+| POST | `/webhooks/twitch` | Twitch EventSub 回呼 |
+
+### WebSocket
+
+| Path | 說明 |
+|------|------|
+| `WSS /ws/live/:channelId` | 即時 snapshot + highlight 推送 |
+
+---
+
+## 7. 前端頁面設計
+
+### 路由結構
+
+```
+/                       Landing Page
+/login                  OAuth 登入選擇
+/auth/callback          OAuth callback 中繼頁
+/dashboard              主控台首頁（場次列表 + 統計）
+/dashboard/live         即時監控（直播中）
+/dashboard/sessions/:id 場次詳情 + 時間軸 + 高光
+/dashboard/export/:id   導出頁面（選格式 + 預覽 + 下載）
+/settings               帳號設定 + 頻道管理
+```
+
+### Landing Page（/）
+
+```
+┌─────────────────────────────────────────┐
+│  🎭 Chat Mood Meter                    │
+│                                         │
+│  See your chat's emotions in real-time  │
+│  Auto-detect highlights for editing     │
+│                                         │
+│  [Login with Twitch] [Login with YouTube]│
+│                                         │
+│  ┌─────────┐ ┌─────────┐ ┌─────────┐  │
+│  │ 即時分析 │ │ 自動高光 │ │ 一鍵導出 │  │
+│  │ 情緒波形 │ │ 時間標記 │ │ 剪輯標記 │  │
+│  └─────────┘ └─────────┘ └─────────┘  │
+│                                         │
+│  [Demo Animation — overlay preview]     │
+└─────────────────────────────────────────┘
+```
+
+### Dashboard 首頁（/dashboard）
+
+```
+┌─────────────────────────────────────────┐
+│  Stats Banner                           │
+│  [Total Sessions] [Highlights] [Hours]  │
+├─────────────────┬───────────────────────┤
+│  Recent Sessions│  Emotion Trends       │
+│  ┌────────────┐ │  ┌─────────────────┐  │
+│  │ Mar 13     │ │  │ Stacked Bar     │  │
+│  │ 🔥 3h 2m  │ │  │ Chart           │  │
+│  │ 12 highlights│ │                   │  │
+│  └────────────┘ │  └─────────────────┘  │
+│  ┌────────────┐ │                       │
+│  │ Mar 12     │ │  Radar Chart          │
+│  │ 😂 1h 45m │ │  ┌─────────────────┐  │
+│  └────────────┘ │  │                 │  │
+│                 │  └─────────────────┘  │
+└─────────────────┴───────────────────────┘
+```
+
+### 即時監控（/dashboard/live）
+
+```
+┌─────────────────────────────────────────┐
+│  🔴 LIVE — channelName                  │
+├────────────────────────┬────────────────┤
+│                        │  Current Mood  │
+│  ┌──────────────────┐  │  🔥 HYPE 85%  │
+│  │  Emotion Waveform │  │               │
+│  │  (Canvas 波形圖)  │  │  23 msg/s     │
+│  │  — 複用 overlay — │  │               │
+│  └──────────────────┘  │  Highlights: 5 │
+│                        │               │
+│  ┌──────────────────┐  │  Chat Feed    │
+│  │ Highlight Feed   │  │  user1: poggg │
+│  │ #1 🔥 00:05:23   │  │  user2: LUL   │
+│  │ #2 😂 00:12:47   │  │  user3: 笑死  │
+│  └──────────────────┘  │               │
+└────────────────────────┴────────────────┘
+```
+
+### 導出頁面（/dashboard/export/:id）
+
+```
+┌─────────────────────────────────────────┐
+│  Export Highlights — Mar 13 Session     │
+├─────────────────────────────────────────┤
+│                                         │
+│  Format:                                │
+│  (●) YouTube Chapters                   │
+│  ( ) EDL (Premiere / DaVinci)           │
+│  ( ) CSV                                │
+│  ( ) SRT Subtitles                      │
+│  ( ) JSON                               │
+│  ( ) HTML Report                        │
+│                                         │
+│  Select Highlights:                     │
+│  [✓] #1 🔥 00:05:23 HYPE 92%          │
+│  [✓] #2 😂 00:12:47 FUNNY 85%         │
+│  [ ] #3 😢 00:31:02 SAD 45%           │
+│  [✓] #4 🔥 01:05:11 HYPE 88%          │
+│                                         │
+│  Preview:                               │
+│  ┌───────────────────────────────────┐  │
+│  │ 00:00:00 Stream Start             │  │
+│  │ 00:05:23 🔥 HYPE — chat exploded!│  │
+│  │ 00:12:47 😂 FUNNY — dying laughing│  │
+│  │ 01:05:11 🔥 HYPE — massive play  │  │
+│  └───────────────────────────────────┘  │
+│                                         │
+│  [📋 Copy to Clipboard]  [⬇ Download]  │
+└─────────────────────────────────────────┘
+```
+
+---
+
+## 8. 高光導出格式
+
+### YouTube Chapters（最常用）
+```
 00:00:00 Stream Start
 00:05:23 🔥 HYPE moment — chat exploded!
 00:12:47 😂 FUNNY — viewers dying of laughter
 00:31:02 😢 SAD — emotional scene
+01:05:11 🔥 HYPE — massive play!
+```
+直接貼到 YouTube 影片描述即可自動產生章節。
+
+### EDL（CMX3600 — Premiere / DaVinci Resolve）
+```
+TITLE: Chat Mood Meter Highlights — 2026-03-13
+FCM: NON-DROP FRAME
+
+001  AX       V     C        00:05:23:00 00:05:53:00 00:05:23:00 00:05:53:00
+* HIGHLIGHT: HYPE 92% — chat exploded
+
+002  AX       V     C        00:12:47:00 00:13:17:00 00:12:47:00 00:13:17:00
+* HIGHLIGHT: FUNNY 85% — dying of laughter
 ```
 
-```
-// EDL 範例（CMX3600）
-TITLE: Stream Highlights 2026-03-13
-001  001      V     C        00:05:23:00 00:05:53:00 00:05:23:00 00:05:53:00
-* HIGHLIGHT: 🔥 HYPE 92%
-002  001      V     C        00:12:47:00 00:13:17:00 00:12:47:00 00:13:17:00
-* HIGHLIGHT: 😂 FUNNY 85%
+### CSV
+```csv
+#,Timestamp,Offset,Emotion,Intensity,Duration,Summary
+1,2026-03-13T17:05:23Z,00:05:23,hype,0.92,30s,chat exploded
+2,2026-03-13T17:12:47Z,00:12:47,funny,0.85,30s,dying of laughter
 ```
 
-## Phase 2：Frontend SPA
-
-### 頁面結構
-
+### SRT（字幕格式）
 ```
-/                   → Landing page（產品介紹 + CTA）
-/login              → OAuth 選擇（Twitch / YouTube）
-/callback/twitch    → OAuth callback
-/callback/youtube   → OAuth callback
-/dashboard          → 主控台（需登入）
-/dashboard/live     → 即時監控（直播中）
-/dashboard/history  → 歷史場次列表
-/dashboard/:id      → 場次詳情 + 導出
-/settings           → 帳號設定 + 頻道管理
+1
+00:05:23,000 --> 00:05:53,000
+🔥 HYPE — 92% intensity
+Chat exploded!
+
+2
+00:12:47,000 --> 00:13:17,000
+😂 FUNNY — 85% intensity
+Dying of laughter
 ```
 
-### 即時監控頁面（/dashboard/live）
-- 複用現有 overlay 的 Canvas 波形圖
-- 加上：即時聊天流（側欄）、高光計數器、當前觀眾數
-- WebSocket 連線到後端取得即時 snapshot
+### JSON
+```json
+{
+  "session": {
+    "id": "...",
+    "channel": "xqc",
+    "started": "2026-03-13T17:00:00Z",
+    "duration": "3h 15m"
+  },
+  "highlights": [
+    {
+      "offset": "00:05:23",
+      "offsetSec": 323,
+      "emotion": "hype",
+      "intensity": 0.92,
+      "duration": 30,
+      "summary": "chat exploded",
+      "samples": ["PogChamp", "LETS GOO", "好耶好耶"]
+    }
+  ]
+}
+```
 
-### 歷史場次（/dashboard/history）
-- 複用現有 Dashboard 的設計
-- 加上：搜尋 / 篩選、日期範圍、情緒類型
+### HTML Report
+獨立的深色主題 HTML 報告（複用現有 ExportManager），含 Chart.js 折線圖 + 高光列表。
 
-### 導出頁面
-- 勾選要導出的高光（或全選）
-- 選擇格式（JSON / CSV / EDL / YouTube Chapter / SRT）
-- 預覽 → 下載
-- 「複製到剪貼簿」按鈕（YouTube 章節格式）
+---
 
-## Phase 3：進階功能
+## 9. 部署架構
 
-### P3-1 — Twitch EventSub（Webhook）
-- 取代 polling，即時接收開台/關台事件
-- Webhook endpoint: `POST /api/webhooks/twitch`
-- 自動驗證 Twitch 簽名
+### Docker Compose
 
-### P3-2 — YouTube Data API 整合
-- liveBroadcasts.list 偵測直播狀態
-- liveChatMessages.list 收集聊天（需 quota 管理）
-- YouTube quota: 10,000 units/day，liveChatMessages.list = 5 units
-  - 每 5 秒 poll = 720 次/小時 = 3,600 units/hr
-  - 一場 3 小時直播 ≈ 10,800 units → 超出免費額度
-  - 解法：動態調整 poll 間隔（低聊天量時放慢）
+```yaml
+version: '3.8'
 
-### P3-3 — 通知系統
-- 高光觸發時推送通知（Discord Webhook / Email）
-- 直播結束時自動寄送報告
-- 可設定情緒閾值和通知頻率
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    ports:
+      - "3000:3000"
+    environment:
+      - DATABASE_URL=postgresql://cmm:password@postgres:5432/chatmoodmeter
+      - REDIS_URL=redis://redis:6379
+      - TWITCH_CLIENT_ID=...
+      - TWITCH_CLIENT_SECRET=...
+      - YOUTUBE_CLIENT_ID=...
+      - YOUTUBE_CLIENT_SECRET=...
+      - JWT_SECRET=...
+      - ENCRYPTION_KEY=...        # Token 加密用
+    depends_on:
+      - postgres
+      - redis
 
-## 技術選型
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    environment:
+      - DATABASE_URL=postgresql://cmm:password@postgres:5432/chatmoodmeter
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      - postgres
+      - redis
 
-| 項目 | 選擇 | 原因 |
+  postgres:
+    image: postgres:16-alpine
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./packages/db/migrations:/docker-entrypoint-initdb.d
+    environment:
+      - POSTGRES_DB=chatmoodmeter
+      - POSTGRES_USER=cmm
+      - POSTGRES_PASSWORD=password
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redisdata:/data
+
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddydata:/data
+
+volumes:
+  pgdata:
+  redisdata:
+  caddydata:
+```
+
+### Caddyfile
+```
+chatmoodmeter.com {
+  # API + WebSocket
+  handle /api/* {
+    reverse_proxy api:3000
+  }
+  handle /ws/* {
+    reverse_proxy api:3000
+  }
+  handle /auth/* {
+    reverse_proxy api:3000
+  }
+  handle /webhooks/* {
+    reverse_proxy api:3000
+  }
+  # Frontend SPA
+  handle {
+    root * /srv/web
+    try_files {path} /index.html
+    file_server
+  }
+}
+```
+
+---
+
+## 10. 容量評估
+
+### 硬體需求（2 vCPU / 4GB RAM）
+
+| 元件 | RAM | CPU |
+|------|-----|-----|
+| OS + 系統 | 400MB | — |
+| API Server | 80MB | 0.1 core |
+| Worker Pool 主程序 | 60MB | 0.05 core |
+| PostgreSQL | 200MB | 0.2 core |
+| Redis | 50MB | 0.05 core |
+| Caddy | 20MB | 0.02 core |
+| **系統小計** | **810MB** | **0.42 core** |
+| **可用給 Workers** | **3.2GB** | **1.58 core** |
+
+### 同時 Worker 數
+
+| 頻道規模 | RAM/Worker | 同時數 |
+|----------|-----------|--------|
+| 小台 (<1k 觀眾) | ~20MB | ~150 |
+| 中台 (1k-10k) | ~30MB | ~100 |
+| 大台 (>10k) | ~60MB | ~50 |
+| 混合 | ~30MB | ~100 |
+
+### 使用者承載量
+
+```
+假設：
+- 同時在線率 12%（100 人裡 12 人同時在直播）
+- 混合頻道規模
+
+100 workers ÷ 12% = ~800 位註冊使用者
+
+保守估計：500-800 人
+```
+
+### DB 容量（每月）
+
+| 項目 | 量 | 大小 |
+|------|-----|------|
+| snapshots | ~14M 筆 | ~1.4GB |
+| highlights | ~6K 筆 | ~3MB |
+| 其他 | — | ~100MB |
+| **月增** | — | **~1.5GB** |
+
+90 天保留 → 最大 ~5GB，PostgreSQL 輕鬆處理。
+
+---
+
+## 11. 開發里程碑
+
+### M1 — Monorepo 重構（1 session）
+- 建立 Turborepo 結構
+- 現有核心程式碼抽進 `packages/core/`
+- Collector 抽進 `packages/collector/`
+- 確保現有 168 個 unit tests 全部通過
+
+### M2 — 資料庫 + ORM（1 session）
+- PostgreSQL schema + migrations
+- Drizzle ORM setup
+- DB 存取層（Repository pattern）
+- BatchWriter 實作
+- 資料遷移工具（SQLite → PostgreSQL）
+
+### M3 — Auth 系統（1 session）
+- Twitch OAuth 2.0 complete flow
+- YouTube OAuth 2.0 complete flow
+- JWT 發行 + 驗證 middleware
+- Token 加密儲存
+- 帳號 CRUD
+
+### M4 — Worker Pool + Trigger（1 session）
+- BullMQ job queue setup
+- WorkerPool class
+- ChannelWorker class（複用核心模組）
+- Trigger Service（Twitch EventSub + YouTube polling）
+- 健康檢查 + 自動重啟
+
+### M5 — API Server（1 session）
+- Fastify setup + 路由
+- 所有 REST endpoints
+- WebSocket Hub（Redis Pub/Sub fanout）
+- Request validation（Zod schema）
+- Rate limiting
+
+### M6 — 高光導出（1 session）
+- 6 種格式：JSON / CSV / EDL / YouTube Chapters / SRT / HTML
+- 導出 API
+- 選擇性導出（勾選特定高光）
+- offset_sec 計算（相對直播開始時間）
+
+### M7 — Frontend SPA（2 sessions）
+- React + Vite + React Router
+- Landing Page
+- OAuth 登入流程
+- Dashboard 首頁（場次列表 + 統計圖表）
+- 即時監控頁面（WebSocket + Canvas 波形）
+- 場次詳情（時間軸 + 高光列表）
+- 導出頁面（格式選擇 + 預覽 + 下載/複製）
+- Settings（帳號 + 頻道管理）
+
+### M8 — Docker 化 + 部署（1 session）
+- Dockerfile.api + Dockerfile.worker
+- docker-compose.yml
+- Caddyfile（HTTPS + 反向代理）
+- 環境變數管理
+- 健康檢查端點
+- 部署腳本
+
+### M9 — 通知 + 打磨（1 session）
+- Discord Webhook 通知（高光觸發 / 直播結束報告）
+- Email 通知（可選）
+- 錯誤監控（Sentry）
+- 效能優化（DB 查詢、快取）
+- 文件（API docs、README）
+
+**總計：10 sessions**
+
+---
+
+## 12. 風險與對策
+
+| 風險 | 影響 | 對策 |
 |------|------|------|
-| 後端框架 | Fastify | 效能好、TypeScript 原生支援、插件生態 |
-| 前端 | React + Vite | SPA、Chart.js 整合方便 |
-| 資料庫 | PostgreSQL | JSONB 支援、效能、擴展性 |
-| 快取/佇列 | Redis + BullMQ | Worker 排程、session 快取 |
-| 認證 | Passport.js | Twitch/YouTube OAuth 策略成熟 |
-| ORM | Drizzle | 型別安全、輕量 |
-| 部署 | Docker Compose | 一鍵部署（API + Worker + Redis + PG） |
-| 未來 | Kubernetes | 自動擴展 worker pod |
+| **YouTube API Quota** | 每天 10,000 units 不夠 | 用 Pub/Sub Hubbub 推送 + 動態 polling 頻率 |
+| **Twitch IRC 規模** | 大台 >50k 觀眾訊息爆量 | Worker 內部抽樣（保留 emote 密集的訊息） |
+| **DB 寫入瓶頸** | 高峰期 100+ writes/sec | BatchWriter 批次寫入 + 連線池 |
+| **OAuth Token 過期** | 連線中斷 | 背景 cron 定期刷新，提前 10 分鐘刷 |
+| **Worker 記憶體洩漏** | 長時間運行 OOM | Worker 超過 8 小時自動重啟 |
+| **EventSub 丟失** | 漏掉開台事件 | 每 5 分鐘 fallback polling Twitch streams API |
+| **使用者刪帳號** | GDPR 合規 | CASCADE DELETE + 立即清除 token |
+| **DDoS / 濫用** | 服務不可用 | Rate limiting + Cloudflare + 帳號綁定才能用 |
 
-## 檔案結構（預計）
+---
+
+## 專案結構
 
 ```
 chat-mood-meter/
 ├── apps/
-│   ├── web/                  # React SPA
+│   ├── web/                      # React SPA
 │   │   ├── src/
 │   │   │   ├── pages/
+│   │   │   │   ├── Landing.tsx
+│   │   │   │   ├── Login.tsx
+│   │   │   │   ├── Dashboard.tsx
+│   │   │   │   ├── LiveMonitor.tsx
+│   │   │   │   ├── SessionDetail.tsx
+│   │   │   │   ├── Export.tsx
+│   │   │   │   └── Settings.tsx
 │   │   │   ├── components/
 │   │   │   ├── hooks/
-│   │   │   └── lib/
+│   │   │   ├── lib/
+│   │   │   └── App.tsx
+│   │   ├── package.json
 │   │   └── vite.config.ts
 │   │
-│   └── api/                  # Fastify API server
+│   ├── api/                      # Fastify API Server
+│   │   ├── src/
+│   │   │   ├── routes/
+│   │   │   │   ├── auth.ts
+│   │   │   │   ├── sessions.ts
+│   │   │   │   ├── channels.ts
+│   │   │   │   ├── export.ts
+│   │   │   │   └── webhooks.ts
+│   │   │   ├── services/
+│   │   │   │   ├── trigger.ts
+│   │   │   │   └── ws-hub.ts
+│   │   │   ├── middleware/
+│   │   │   │   ├── auth.ts
+│   │   │   │   └── rate-limit.ts
+│   │   │   └── index.ts
+│   │   └── package.json
+│   │
+│   └── worker/                   # Worker Pool
 │       ├── src/
-│       │   ├── routes/
-│       │   ├── services/
-│       │   ├── workers/
-│       │   ├── auth/
-│       │   └── export/
+│       │   ├── pool.ts
+│       │   ├── channel-worker.ts
+│       │   ├── batch-writer.ts
+│       │   └── index.ts
 │       └── package.json
 │
 ├── packages/
-│   ├── core/                 # 共用核心（現有 analyzer, highlight, types）
-│   ├── collector/            # 收集器（現有 + YouTube 增強）
-│   └── db/                   # Drizzle schema + migrations
+│   ├── core/                     # 共用核心（現有模組）
+│   │   ├── analyzer/
+│   │   ├── highlight/
+│   │   └── types.ts
+│   │
+│   ├── collector/                # 收集器
+│   │   ├── twitch.ts
+│   │   └── youtube.ts
+│   │
+│   ├── db/                       # Drizzle schema + migrations
+│   │   ├── schema.ts
+│   │   ├── migrations/
+│   │   └── repository.ts
+│   │
+│   └── export/                   # 導出格式
+│       ├── json.ts
+│       ├── csv.ts
+│       ├── edl.ts
+│       ├── chapters.ts
+│       ├── srt.ts
+│       └── html.ts
 │
 ├── docker-compose.yml
 ├── Dockerfile.api
 ├── Dockerfile.worker
-└── turbo.json                # Turborepo monorepo 管理
+├── Caddyfile
+├── turbo.json
+└── package.json
 ```
-
-## 開發里程碑
-
-| 里程碑 | 內容 | 預估 |
-|--------|------|------|
-| M1 | Monorepo 重構 + 核心抽離 | 1 session |
-| M2 | Auth 系統（Twitch + YouTube OAuth） | 1 session |
-| M3 | Worker 架構 + 多租戶 | 1 session |
-| M4 | PostgreSQL 遷移 + API 端點 | 1 session |
-| M5 | Frontend SPA（Landing + Dashboard） | 2 sessions |
-| M6 | 高光導出（6 種格式） | 1 session |
-| M7 | 即時監控 WebSocket | 1 session |
-| M8 | Docker 化 + 部署 | 1 session |
-| M9 | 通知系統 + Discord Webhook | 1 session |
-
-## 風險與注意事項
-
-1. **YouTube API Quota** — 免費額度有限，需要智慧 polling 策略
-2. **Twitch IRC 規模** — 大型頻道（>50k 觀眾）訊息量極大，worker 需要能處理
-3. **資料量** — 逐秒快照每場 3,600 筆，100 位用戶 × 30 場/月 = 10.8M 筆/月 → 需要分區或定期清理
-4. **GDPR** — 儲存使用者資料需要隱私政策和刪除機制
-5. **OAuth Token 刷新** — 需要背景 job 定期刷新 token，避免斷線
-6. **成本** — PostgreSQL + Redis + Worker 至少需要一台 VPS（$20/mo 起）
 
 ---
 
