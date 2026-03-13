@@ -20,16 +20,37 @@ const urlParams = new URLSearchParams(window.location.search);
 /** WebSocket 連接埠，預設 9800 */
 const WS_PORT = parseInt(urlParams.get('port') || '9800', 10);
 
-/** WebSocket host，預設使用當前頁面的 host（支援 tunnel） */
-const WS_HOST = urlParams.get('wsHost') || window.location.hostname || 'localhost';
+/**
+ * WebSocket URL 自動偵測：
+ * - 透過 tunnel（HTTPS）→ wss://tunnel-domain
+ * - 本地開發 → ws://localhost:PORT
+ * - 手動指定 → ?wsUrl=wss://xxx
+ */
+const WS_URL = (() => {
+  // 最高優先：URL 參數直接指定完整 WebSocket URL
+  if (urlParams.get('wsUrl')) return urlParams.get('wsUrl');
 
-/** WebSocket 協定，HTTPS 時自動用 wss */
-const WS_PROTOCOL = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const loc = window.location;
+  console.log('[MoodMeter] location debug:', JSON.stringify({
+    hostname: loc.hostname,
+    host: loc.host,
+    protocol: loc.protocol,
+    port: loc.port,
+    href: loc.href
+  }));
 
-/** 完整 WebSocket URL（tunnel 時用 443/不帶 port，本地時用指定 port） */
-const WS_URL = window.location.hostname && window.location.hostname !== 'localhost'
-  ? `${WS_PROTOCOL}//${WS_HOST}`
-  : `ws://${WS_HOST}:${WS_PORT}`;
+  const isLocal = !loc.hostname || loc.hostname === 'localhost' || loc.hostname === '127.0.0.1';
+
+  if (isLocal) {
+    return `ws://localhost:${WS_PORT}`;
+  }
+
+  // 非本地 = 透過 tunnel 或遠端存取，用當前頁面的 host
+  const protocol = loc.protocol === 'https:' ? 'wss:' : 'ws:';
+  return `${protocol}//${loc.host}`;
+})();
+
+console.log('[MoodMeter] WS_URL =', WS_URL);
 
 /** 波形圖顯示歷史分鐘數，預設 5 分鐘 */
 const HISTORY_MINUTES = parseFloat(urlParams.get('history') || '5');

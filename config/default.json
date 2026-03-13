@@ -2,7 +2,7 @@
   "platforms": {
     "twitch": {
       "enabled": true,
-      "channel": "xqc",
+      "channel": "caedrel",
       "token": ""
     },
     "youtube": {
