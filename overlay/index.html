@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<!--
+  Chat Mood Meter — OBS Overlay
+  M3 模組：OBS Browser Source 前端
+  使用方式：在 OBS 加入 Browser Source，URL 設為：
+    file:///path/to/overlay/index.html?port=9800&history=5
+  參數：
+    port    WebSocket 連接埠（預設 9800）
+    history 波形圖顯示歷史分鐘數（預設 5）
+-->
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chat Mood Meter</title>
+
+  <!-- 像素風字體：Press Start 2P（標題/數字）+ VT323（副文字） -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323:wght@400&display=swap" rel="stylesheet" />
+
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!--
+    整體容器：400x200 基準尺寸
+    OBS 可透過 Browser Source 的 Width/Height 縮放
+  -->
+  <div id="mood-overlay">
+
+    <!-- 波形圖 Canvas：佔左側大部分空間 -->
+    <canvas id="waveform-canvas"></canvas>
+
+    <!-- 右側資訊面板 -->
+    <div id="info-panel">
+
+      <!-- 情緒 Emoji 氣泡 -->
+      <div id="emotion-bubble">
+        <span id="emotion-emoji">😐</span>
+      </div>
+
+      <!-- 強度百分比 -->
+      <div id="intensity-bar">
+        <div id="intensity-fill"></div>
+        <span id="intensity-label">0%</span>
+      </div>
+
+      <!-- 每秒訊息數 -->
+      <div id="msg-rate">
+        <span id="msg-rate-value">0</span>
+        <span id="msg-rate-unit">msg/s</span>
+      </div>
+
+    </div><!-- /#info-panel -->
+
+    <!-- 高光閃爍特效覆蓋層（預設隱藏） -->
+    <div id="highlight-flash"></div>
+
+    <!-- 連線狀態指示點 -->
+    <div id="connection-dot" class="disconnected" title="WebSocket 連線狀態"></div>
+
+  </div><!-- /#mood-overlay -->
+
+  <script src="mood-meter.js"></script>
+</body>
+</html>

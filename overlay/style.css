@@ -1,0 +1,265 @@
+/*
+ * Chat Mood Meter — OBS Overlay 樣式
+ * 風格：遊戲 HUD，深色半透明，像素字體
+ * 設計原則：不搶鏡，讓直播畫面呼吸
+ */
+
+/* ─── 全局重設 ─── */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* OBS Browser Source 透明背景 */
+html, body {
+  background: transparent;
+  overflow: hidden;
+  width: 100%;
+  height: 100%;
+}
+
+/* ─── 主容器 ─── */
+#mood-overlay {
+  position: relative;
+  width: 400px;
+  height: 200px;
+
+  /* 深色半透明背景，圓角 */
+  background: rgba(0, 0, 0, 0.60);
+  border-radius: 12px;
+
+  /* 微微發光邊框，增加 HUD 質感 */
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow:
+    0 0 20px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+
+  display: flex;
+  align-items: stretch;
+  overflow: hidden;
+
+  /* 讓整體在 OBS 縮放時保持比例 */
+  font-size: clamp(8px, 2vw, 14px);
+}
+
+/* ─── 波形 Canvas ─── */
+#waveform-canvas {
+  flex: 1;
+  display: block;
+  /* canvas 尺寸由 JS 動態設定 */
+}
+
+/* ─── 右側資訊面板 ─── */
+#info-panel {
+  width: 88px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-evenly;
+  padding: 8px 4px;
+
+  /* 左側分隔線 */
+  border-left: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(0, 0, 0, 0.2);
+}
+
+/* ─── 情緒 Emoji 氣泡 ─── */
+#emotion-bubble {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1.5px solid rgba(255, 255, 255, 0.12);
+
+  /* 情緒切換時的呼吸光暈，顏色由 JS 動態修改 */
+  box-shadow: 0 0 12px var(--emotion-glow, rgba(255,255,255,0.1));
+  transition: box-shadow 0.6s ease;
+}
+
+#emotion-emoji {
+  font-size: 28px;
+  line-height: 1;
+  display: block;
+
+  /* 彈跳動畫：情緒切換時觸發 */
+  transition: transform 0.15s ease;
+}
+
+/* 彈跳動畫關鍵幀 */
+@keyframes emoji-bounce {
+  0%   { transform: scale(1); }
+  30%  { transform: scale(1.45) rotate(-8deg); }
+  60%  { transform: scale(0.88) rotate(4deg); }
+  80%  { transform: scale(1.12); }
+  100% { transform: scale(1); }
+}
+
+/* 彈跳 class 由 JS 加上/移除 */
+#emotion-emoji.bouncing {
+  animation: emoji-bounce 0.5s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+}
+
+/* ─── 強度進度條 ─── */
+#intensity-bar {
+  position: relative;
+  width: 68px;
+  height: 14px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 7px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+#intensity-fill {
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 0%;
+  border-radius: 7px;
+
+  /* 顏色由 JS 動態設定；預設橘色 */
+  background: linear-gradient(
+    90deg,
+    var(--emotion-color-start, #ff6b35),
+    var(--emotion-color-end, #ffd700)
+  );
+  transition: width 0.5s ease, background 0.6s ease;
+}
+
+#intensity-label {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  font-family: 'Press Start 2P', monospace;
+  font-size: 7px;
+  color: rgba(255, 255, 255, 0.9);
+  text-shadow: 0 0 4px rgba(0, 0, 0, 0.8);
+  letter-spacing: -0.5px;
+}
+
+/* ─── 訊息速率 ─── */
+#msg-rate {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1.2;
+}
+
+#msg-rate-value {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 13px;
+  color: #e0e0e0;
+  text-shadow: 0 0 6px rgba(255, 255, 255, 0.3);
+  transition: color 0.4s ease;
+}
+
+#msg-rate-unit {
+  font-family: 'VT323', monospace;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.4);
+  letter-spacing: 0.5px;
+  margin-top: 1px;
+}
+
+/* ─── 高光閃爍特效 ─── */
+#highlight-flash {
+  position: absolute;
+  inset: 0;
+  border-radius: 12px;
+  pointer-events: none;
+
+  /* 預設不可見 */
+  opacity: 0;
+  background: radial-gradient(
+    ellipse at center,
+    rgba(255, 215, 0, 0.25) 0%,
+    rgba(255, 165, 0, 0.15) 40%,
+    transparent 70%
+  );
+}
+
+/* 閃爍動畫 */
+@keyframes highlight-flash-anim {
+  0%   { opacity: 0; }
+  10%  { opacity: 1; }
+  30%  { opacity: 0.6; }
+  50%  { opacity: 1; }
+  70%  { opacity: 0.4; }
+  85%  { opacity: 0.8; }
+  100% { opacity: 0; }
+}
+
+#highlight-flash.flashing {
+  animation: highlight-flash-anim 1.2s ease-out forwards;
+}
+
+/* 高光時邊框也閃一下 */
+@keyframes border-glow {
+  0%, 100% { border-color: rgba(255, 255, 255, 0.08); }
+  40%       { border-color: rgba(255, 215, 0, 0.6); box-shadow: 0 0 20px rgba(255, 200, 0, 0.4), 0 0 40px rgba(255, 150, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.05); }
+}
+
+#mood-overlay.highlight-active {
+  animation: border-glow 1.2s ease-out forwards;
+}
+
+/* ─── 連線狀態指示點 ─── */
+#connection-dot {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  transition: background 0.4s ease;
+}
+
+#connection-dot.connected {
+  background: #4caf50;
+  box-shadow: 0 0 5px #4caf50;
+  animation: pulse-dot 2s infinite;
+}
+
+#connection-dot.disconnected {
+  background: #f44336;
+  box-shadow: 0 0 5px #f44336;
+}
+
+#connection-dot.connecting {
+  background: #ff9800;
+  box-shadow: 0 0 5px #ff9800;
+  animation: pulse-dot 0.8s infinite;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.5; transform: scale(0.8); }
+}
+
+/* ─── 情緒主題色變數（由 JS 動態更新 --emotion-* 變數） ─── */
+/*
+  JS 會根據 dominant emotion 切換以下 CSS 變數：
+  --emotion-glow        氣泡光暈色
+  --emotion-color-start 進度條漸層起點
+  --emotion-color-end   進度條漸層終點
+*/
+
+/* ─── 響應式：OBS 縮放保護 ─── */
+/*
+  OBS Browser Source 通常直接改 Width/Height，
+  以下用 transform scale 讓內容在任意容器內保持 400x200 排版。
+  若 OBS 設為 800x400，overlay 會自動放大 2 倍，字體和 canvas 不會跑版。
+*/
+@media (max-width: 399px) {
+  #mood-overlay {
+    transform-origin: top left;
+    transform: scale(calc(100vw / 400));
+  }
+}
