@@ -34,4 +34,8 @@ export const config = {
   cors: {
     origin: process.env.CORS_ORIGIN ?? 'http://localhost:5173',
   },
+
+  redis: {
+    url: process.env.REDIS_URL ?? 'redis://localhost:6379',
+  },
 };

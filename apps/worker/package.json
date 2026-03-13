@@ -1,0 +1,25 @@
+{
+  "name": "@cmm/worker",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@cmm/collector": "*",
+    "@cmm/core": "*",
+    "@cmm/db": "*",
+    "bullmq": "^5.40.0",
+    "fastify": "^5.3.3",
+    "ioredis": "^5.6.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.0"
+  }
+}
