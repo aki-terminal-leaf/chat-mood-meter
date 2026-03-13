@@ -52,16 +52,249 @@
   - Cookie httpOnly + secure
 
 ### P1-2 — 多租戶 Worker 架構
-- 每個活躍頻道一個 worker process / thread
-- Worker 生命週期：
-  ```
-  stream.online → spawn worker → collect + analyze → stream.offline → 產生報告 → shutdown
-  ```
-- Worker 內容 = 現有 Collector + Analyzer + HighlightDetector（複用）
-- Worker 管理：
-  - Bull/BullMQ job queue（Redis）
-  - 自動 scale：偵測到開台 → 排 job → worker pool 認領
-  - 限制：免費用戶最多 1 個頻道同時分析
+
+#### 核心問題
+
+一台 server 要同時幫 N 個使用者分析 N 個不同的直播頻道。每個頻道都需要：
+- 一條持續的 IRC / Chat 連線（收訊息）
+- 一個 Analyzer 實例（算情緒）
+- 一個 HighlightDetector 實例（抓高光）
+- 定期寫 DB
+
+這些都是有狀態的長時間運作，不適合用 stateless HTTP request 處理。
+
+#### 架構：Worker Pool + Job Queue
+
+```
+                    ┌─────────────┐
+                    │  Trigger    │  ← Twitch EventSub / YouTube polling / 手動
+                    │  Service    │
+                    └──────┬──────┘
+                           │ enqueue job
+                    ┌──────▼──────┐
+                    │   Redis     │  ← BullMQ job queue
+                    │   Queue     │
+                    └──────┬──────┘
+                           │ dequeue
+              ┌────────────┼────────────┐
+              │            │            │
+         ┌────▼────┐  ┌───▼─────┐  ┌───▼─────┐
+         │Worker 1 │  │Worker 2 │  │Worker 3 │  ← Worker Pool（可水平擴展）
+         │ch: xqc  │  │ch: poki │  │ch: caed │
+         └────┬────┘  └────┬────┘  └────┬────┘
+              │            │            │
+              ▼            ▼            ▼
+         Twitch IRC   Twitch IRC   YouTube Chat
+         Analyzer     Analyzer     Analyzer
+         Highlight    Highlight    Highlight
+              │            │            │
+              └────────────┼────────────┘
+                           │ write
+                    ┌──────▼──────┐
+                    │ PostgreSQL  │
+                    └─────────────┘
+```
+
+#### Worker 生命週期
+
+```
+1. CREATED
+   Trigger Service 偵測到使用者的頻道開台
+   → 建立 job: { userId, channelId, platform, channelName }
+   → 推入 Redis queue
+
+2. STARTING
+   Worker Pool 中一個空閒 worker 認領 job
+   → 建立 Collector（Twitch IRC 或 YouTube Chat）
+   → 建立 Analyzer + HighlightDetector
+   → 建立 DB session 記錄
+   → 連線到目標頻道
+
+3. RUNNING
+   持續運作，每秒：
+   - Collector 收到 ChatMessage → feed 給 Analyzer
+   - Analyzer emit snapshot → 寫 DB + 推 WebSocket（給前端即時顯示）
+   - HighlightDetector 偵測到高光 → 寫 DB + 推通知
+
+4. STOPPING
+   觸發條件（任一）：
+   - Twitch EventSub 收到 stream.offline
+   - YouTube API 回報直播結束
+   - 使用者手動停止
+   - 連線斷開超過重連上限
+   - Server 收到 shutdown signal
+
+   → 停止 Collector
+   → 等待最後一批 snapshot 寫入
+   → 結束 DB session（endSession）
+   → 產生場次摘要
+   → 釋放 worker 資源
+
+5. COMPLETED
+   Worker 回到 idle pool，等待下一個 job
+```
+
+#### Worker 內部結構（單一 worker）
+
+```typescript
+interface ChannelWorker {
+  // 識別
+  jobId: string;
+  userId: string;
+  channelId: string;
+  platform: 'twitch' | 'youtube';
+  status: 'starting' | 'running' | 'stopping' | 'error';
+
+  // 核心元件（複用現有模組）
+  collector: TwitchCollector | YouTubeCollector;
+  analyzer: RulesAnalyzer | LLMAnalyzer;
+  detector: HighlightDetector;
+
+  // 狀態
+  sessionId: string;          // DB session UUID
+  startedAt: Date;
+  messageCount: number;
+  highlightCount: number;
+  lastSnapshotAt: number;
+
+  // 方法
+  start(): Promise<void>;
+  stop(reason: string): Promise<void>;
+  getStatus(): WorkerStatus;
+}
+```
+
+#### Worker Pool 管理
+
+```typescript
+class WorkerPool {
+  private workers: Map<string, ChannelWorker>;  // jobId → worker
+  private maxConcurrent: number;                 // 單台 server 最大同時 worker 數
+
+  // 資源管理
+  // 每個 worker 大約消耗：
+  //   - 1 條 TCP 連線（Twitch IRC）
+  //   - ~20MB RAM（Analyzer 滑動視窗 + 緩衝區）
+  //   - 極少 CPU（規則引擎很輕量）
+  //
+  // 一台 4GB VPS 大約能跑 100-150 個 worker 同時
+  // 瓶頸在 TCP 連線數和 DB 寫入 throughput
+
+  async spawn(job: ChannelJob): Promise<void> {
+    if (this.workers.size >= this.maxConcurrent) {
+      throw new Error('Worker pool full');
+    }
+    const worker = new ChannelWorker(job);
+    this.workers.set(job.id, worker);
+    await worker.start();
+  }
+
+  async kill(jobId: string, reason: string): Promise<void> {
+    const worker = this.workers.get(jobId);
+    if (worker) {
+      await worker.stop(reason);
+      this.workers.delete(jobId);
+    }
+  }
+
+  // 健康檢查：定期檢查每個 worker 是否還活著
+  healthCheck(): void {
+    for (const [id, worker] of this.workers) {
+      if (worker.status === 'error') {
+        this.kill(id, 'health check failed');
+      }
+    }
+  }
+}
+```
+
+#### DB 寫入策略（高 throughput）
+
+```
+問題：100 個 worker × 每秒 1 筆 snapshot = 100 writes/sec
+     加上 chat messages 可能更多
+
+解法：批次寫入
+```
+
+```typescript
+class BatchWriter {
+  private buffer: Snapshot[] = [];
+  private flushInterval = 5000;  // 每 5 秒 flush 一次
+
+  add(snapshot: Snapshot): void {
+    this.buffer.push(snapshot);
+  }
+
+  // 定期批次寫入（一次 INSERT 100 筆比 100 次 INSERT 1 筆快 50 倍）
+  async flush(): Promise<void> {
+    if (this.buffer.length === 0) return;
+    const batch = this.buffer.splice(0);
+
+    // PostgreSQL COPY 或 multi-row INSERT
+    await db.query(`
+      INSERT INTO snapshots (session_id, timestamp, dominant, scores, intensity, msg_count)
+      VALUES ${batch.map(s => `(${s.sessionId}, ${s.timestamp}, ...)`).join(',')}
+    `);
+  }
+}
+```
+
+#### 即時推送（WebSocket fanout）
+
+```
+使用者開啟 Dashboard 的即時監控頁面時：
+
+1. 前端建立 WebSocket 連線到 API server
+2. 告訴 server：「我要看 channel X 的即時資料」
+3. Server 訂閱該 channel 的 worker 推送
+4. Worker 每秒 emit snapshot → Redis Pub/Sub → API server → WebSocket → 前端
+
+用 Redis Pub/Sub 是因為：
+- API server 可能有多台（load balancer 後面）
+- Worker 和 API server 可能不在同一台機器
+- Pub/Sub 天然支援 fanout（多個前端訂閱同一頻道）
+```
+
+```
+Worker ──publish──▶ Redis channel: "live:xqc"
+                          │
+                    ┌─────┼─────┐
+                    ▼     ▼     ▼
+                  API-1  API-2  API-3
+                    │     │     │
+                    ▼     ▼     ▼
+                  WS-1  WS-2  WS-3  ← 各自連線的前端使用者
+```
+
+#### 錯誤處理與容錯
+
+| 情境 | 處理方式 |
+|------|----------|
+| Twitch IRC 斷線 | 指數退避重連（複用現有邏輯），3 次失敗後標記 error |
+| YouTube API quota 耗盡 | 暫停該 worker，等到隔天 quota 重置 |
+| Worker crash | WorkerPool healthCheck 偵測 → 重新排 job |
+| DB 寫入失敗 | BatchWriter 保留 buffer，retry 3 次，持續失敗則暫存到 Redis |
+| Server 重啟 | Redis queue 裡的 job 不會丟失，重啟後自動 re-consume |
+| 使用者刪帳號 | Trigger Service 發 kill signal → worker 優雅關閉 → 清除資料 |
+
+#### 擴展策略
+
+```
+階段 1（0-100 使用者）：
+  單台 VPS，API + Worker + Redis + PG 全在一起
+  Docker Compose 部署
+
+階段 2（100-1000 使用者）：
+  分離：API server × 2 + Worker server × 2 + Redis + PG
+  Worker server 專門跑 collector + analyzer
+
+階段 3（1000+ 使用者）：
+  Kubernetes，Worker 用 HPA 自動擴展
+  PG 用 read replica
+  Redis Cluster
+  snapshot 資料考慮 TimescaleDB
+```
 
 ### P1-3 — 資料庫（PostgreSQL）
 ```sql
@@ -204,17 +437,7 @@ TITLE: Stream Highlights 2026-03-13
   - 一場 3 小時直播 ≈ 10,800 units → 超出免費額度
   - 解法：動態調整 poll 間隔（低聊天量時放慢）
 
-### P3-3 — 付費方案
-| 功能 | Free | Pro ($5/mo) |
-|------|------|-------------|
-| 同時分析頻道 | 1 | 5 |
-| 歷史保留 | 7 天 | 90 天 |
-| 導出格式 | JSON / CSV | 全部（含 EDL / SRT） |
-| LLM 分析 | ✗ | ✓ |
-| API 存取 | ✗ | ✓ |
-| 即時通知 | ✗ | Webhook / Discord |
-
-### P3-4 — 通知系統
+### P3-3 — 通知系統
 - 高光觸發時推送通知（Discord Webhook / Email）
 - 直播結束時自動寄送報告
 - 可設定情緒閾值和通知頻率
@@ -277,7 +500,7 @@ chat-mood-meter/
 | M6 | 高光導出（6 種格式） | 1 session |
 | M7 | 即時監控 WebSocket | 1 session |
 | M8 | Docker 化 + 部署 | 1 session |
-| M9 | 付費方案 + Stripe | 1 session |
+| M9 | 通知系統 + Discord Webhook | 1 session |
 
 ## 風險與注意事項
 
